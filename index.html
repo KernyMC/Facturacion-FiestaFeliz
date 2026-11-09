@@ -517,7 +517,7 @@
     <div class="card">
       <h2>Teléfonos y versiones <span class="sp"></span><span class="muted small" id="a-version" style="font-weight:400"></span></h2>
       <div id="a-disp"></div>
-      <div class="hint">La app se actualiza sola: revisa cada 10 minutos (y al volver a abrirla) y se instala en la pantalla del PIN o cuando no hay una venta en curso. Aquí se ve qué versión tiene cada teléfono.</div>
+      <div class="hint">La app se actualiza sola: revisa cada 10 minutos (y al volver a abrirla) y se instala en la pantalla del PIN o cuando no hay una venta en curso. Además, <b>todos los días a las 5:00 am</b> se recarga completa. Aquí se ve qué versión tiene cada teléfono.</div>
       <button class="btn soft block" id="btn-disp" style="margin-top:10px">Actualizar lista</button>
     </div>
 
@@ -1576,7 +1576,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '11'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '12'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -1609,6 +1609,26 @@ $('#upd-btn').onclick = () => {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) revisarVersion(); });
 setTimeout(revisarVersion, 5000);
 setInterval(revisarVersion, 10 * 60000);
+
+/* Recarga diaria a las 5:00 am (hora de Ecuador), como Toast: el teléfono descarga todo lo nuevo cada mañana.
+   Si a esa hora está dormido, lo hace al encenderlo; si hay una venta en curso, espera a que termine; sin internet, espera a la señal. */
+const HORA_RECARGA = 5 * 60; // minutos desde medianoche
+const CLAVE_RECARGA = 'fiestaFeliz.recargaDiaria';
+function revisarRecargaDiaria(){
+  if (!location.protocol.startsWith('http') || minutosEcuador() < HORA_RECARGA) return;
+  const hoyE = hoyEcuador();
+  let ultima = ''; try { ultima = localStorage.getItem(CLAVE_RECARGA) || ''; } catch {}
+  if (ultima === hoyE || !navigator.onLine || !momentoSeguro()) return;
+  try { localStorage.setItem(CLAVE_RECARGA, hoyE); } catch {}
+  subirPendientes();
+  toast('Actualización diaria de la app…');
+  (async () => { try { const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update(); } catch {} setTimeout(() => location.reload(), 800); })();
+}
+// si la app se abrió hoy después de las 5:00, ya tiene lo último: cuenta como la actualización del día
+try { if (minutosEcuador() >= HORA_RECARGA) localStorage.setItem(CLAVE_RECARGA, hoyEcuador()); } catch {}
+setInterval(revisarRecargaDiaria, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(revisarRecargaDiaria, 1000); });
+['#dlg-pre', '#dlg-cuenta'].forEach(s => $(s).addEventListener('close', () => setTimeout(revisarRecargaDiaria, 600)));
 
 /* Cada teléfono avisa al servidor qué versión tiene, para que el administrador lo vea */
 async function reportarDispositivo(){
