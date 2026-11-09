@@ -757,7 +757,7 @@
       <button data-d="10">10%</button>
       <button data-d="otro">Otro</button>
     </div>
-    <div class="desc-otro" id="desc-otro" hidden><input id="desc-otro-in" type="number" inputmode="decimal" min="0" max="10" step="0.5" placeholder="0"><span>%</span><small>Máximo 10%</small></div>
+    <div class="desc-otro" id="desc-otro" hidden><input id="desc-otro-in" type="number" inputmode="decimal" min="0" step="0.5" placeholder="0"><span>%</span><small class="desc-tope">Máximo 10%</small></div>
     <div class="tot" style="margin-top:4px">
       <div id="t-dl-row" hidden><span>Descuentos en productos</span><span class="n" id="t-dl">-$0.00</span></div>
       <div id="t-desc-row" hidden><span>Suma de productos</span><span class="n" id="t-bruto">$0.00</span></div>
@@ -825,10 +825,20 @@
     </div>
     <span class="lbl" style="margin-top:12px">Descuento a este producto</span>
     <div class="pay desc" id="it-desc"><button data-d="0">Sin descuento</button><button data-d="5">5%</button><button data-d="10">10%</button><button data-d="otro">Otro</button></div>
-    <div class="desc-otro" id="it-desc-otro" hidden><input id="it-desc-in" type="number" inputmode="decimal" min="0" max="10" step="0.5" placeholder="0"><span>%</span><small>Máximo 10%</small></div>
+    <div class="desc-otro" id="it-desc-otro" hidden><input id="it-desc-in" type="number" inputmode="decimal" min="0" step="0.5" placeholder="0"><span>%</span><small class="desc-tope">Máximo 10%</small></div>
     <div class="hint" id="it-desc-info"></div>
   </div>
   <div class="sh-f"><button class="btn ghost" id="it-borrar"><span data-ic="trash"></span>Quitar</button><button class="btn pri" id="it-ok"><span data-ic="check"></span>Guardar</button></div>
+</dialog>
+
+<!-- Autorizar un descuento mayor al 10% (PIN de administrador) -->
+<dialog id="dlg-aut">
+  <div class="sh-h"><h3>Autorizar descuento</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b">
+    <p class="muted" id="aut-txt" style="margin:0 0 12px"></p>
+    <div class="fld"><span class="lbl">PIN de un administrador</span><input id="aut-pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••"></div>
+  </div>
+  <div class="sh-f"><button class="btn ghost" data-close>Cancelar</button><button class="btn pri" id="aut-ok"><span data-ic="check"></span>Autorizar</button></div>
 </dialog>
 
 <!-- Buscar productos (lupa) -->
@@ -1162,8 +1172,11 @@ function desglose(totalConIva, ivaPct){
 /* Descuentos (como Toast): por producto y sobre el total, cada uno de 0% a 10% como máximo.
    El IVA se calcula sobre el valor ya rebajado. */
 const DESC_TOPE = 10;
-/** Deja el % entre 0 y 10, con medio punto como mínimo paso */
-const limitarDesc = x => { x = parseFloat(String(x).replace(',', '.')); return x > 0 ? Math.min(DESC_TOPE, Math.round(x * 2) / 2) : 0; };
+/** Más del 10% solo un administrador: si está usando la app, o si autorizó esta venta con su PIN */
+let autorizadoPor = null;
+const topeDesc = () => (usuario?.rol === 'admin' || autorizadoPor) ? 100 : DESC_TOPE;
+/** Deja el % entre 0 y el tope, con medio punto como mínimo paso */
+const limitarDesc = x => { x = parseFloat(String(x).replace(',', '.')); return x > 0 ? Math.min(topeDesc(), Math.round(x * 2) / 2) : 0; };
 const importeLinea = l => r2(l.cant * l.precio * (1 - (l.desc || 0) / 100));
 const rebajaLinea = l => r2(r2(l.cant * l.precio) - importeLinea(l));
 const totalesDe = (lineas, iva) => desglose(lineas.reduce((a, l) => a + importeLinea(l), 0), iva);
@@ -1172,7 +1185,8 @@ let descuento = 0, descOtro = false, avisoTope = false;
 function topeDescTotal(){
   const orig = r2(carrito.reduce((a, l) => a + r2(l.cant * l.precio), 0)), lineas = r2(carrito.reduce((a, l) => a + rebajaLinea(l), 0)), bruto = orig - lineas;
   if (!(bruto > 0)) return 0;
-  return Math.max(0, Math.min(DESC_TOPE, Math.floor(((orig * DESC_TOPE / 100 - lineas) / bruto * 100 + 1e-9) * 2) / 2));
+  const t = topeDesc();
+  return Math.max(0, Math.min(t, Math.floor(((orig * t / 100 - lineas) / bruto * 100 + 1e-9) * 2) / 2));
 }
 function totalesVenta(){
   const tope = topeDescTotal();
@@ -1680,7 +1694,7 @@ $('#btn-agregar').onclick = agregarDesdeFormulario;
 $('#e-precio').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregarDesdeFormulario(); } });
 
 function renderVenta(){
-  if (!carrito.length) { descuento = 0; descOtro = false; }
+  if (!carrito.length) { descuento = 0; descOtro = false; autorizadoPor = null; }
   $('#card-venta').hidden = !carrito.length;
   $('#lineas').innerHTML = carrito.map((l, i) => {
     const d = desglose(importeLinea(l), db.iva);
@@ -1704,7 +1718,7 @@ function abrirItem(i){
   $('#dl-prod').innerHTML = db.productos.map(p => `<option value="${esc(p.nombre)}">`).join('');
   $('#it-nombre').value = l.nombre; $('#it-precio').value = l.precio.toFixed(2); $('#it-cant').value = l.cant;
   itDesc = l.desc || 0; itDescOtro = ![0, 5, 10].includes(itDesc); $('#it-desc-in').value = itDescOtro ? itDesc : '';
-  pintarItDesc();
+  pintarItDesc(); pintarTopeDesc();
   $('#dlg-item').showModal();
 }
 let itDesc = 0, itDescOtro = false;
@@ -1880,11 +1894,11 @@ function renderCuenta(){
   $('#t-bruto').textContent = money(t.bruto); $('#t-desc-pct').textContent = t.descPct; $('#t-desc').textContent = '-' + money(t.descM);
   if (avisoTope) {
     avisoTope = false; $('#desc-otro-in').value = descuento || '';
-    toast(descuento ? `Los descuentos juntos no pueden pasar del ${DESC_TOPE}%: el del total quedó en ${descuento}%` : `Los productos ya tienen el ${DESC_TOPE}% de descuento: no se puede dar más`);
+    toast(descuento ? `Los descuentos juntos no pueden pasar del ${topeDesc()}%: el del total quedó en ${descuento}%` : `Los productos ya tienen el ${topeDesc()}% de descuento: no se puede dar más`);
   }
   $('#t-dl-row').hidden = !t.descLineas; $('#t-dl').textContent = '-' + money(t.descLineas);
   $('#desc').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === 'otro' ? descOtro : !descOtro && +b.dataset.d === descuento));
-  $('#desc-otro').hidden = !descOtro;
+  $('#desc-otro').hidden = !descOtro; pintarTopeDesc();
   $('#desc [data-d="otro"]').textContent = descOtro && descuento ? `Otro (${descuento}%)` : 'Otro';
   document.querySelectorAll('.iva-pct').forEach(e => e.textContent = db.iva);
   calcVuelto();
@@ -1898,16 +1912,47 @@ $('#desc').addEventListener('click', e => {
   descOtro = false; descuento = +b.dataset.d; renderCuenta(); actualizarBarra();
   if (descuento) toast(`Descuento del ${descuento}% aplicado`);
 });
-/** Campo de % libre: no deja pasar del 10% */
+/** Campo de % libre: una vendedora llega hasta 10%; para más, un administrador autoriza con su PIN */
 function campoPct(el, alCambiar){
+  let tPedir;
   el.addEventListener('input', () => {
+    clearTimeout(tPedir);
     const x = parseFloat(el.value.replace(',', '.'));
-    if (x > DESC_TOPE) { el.value = DESC_TOPE; toast(`El descuento máximo es ${DESC_TOPE}%`); }
+    if (x > 100) { el.value = 100; }
+    if (x > topeDesc()) {
+      el.value = DESC_TOPE; alCambiar(DESC_TOPE);
+      // se espera un momento por si sigue escribiendo, y se pide el PIN de un administrador
+      tPedir = setTimeout(() => pedirAutorizacion(Math.min(100, x), () => { el.value = limitarDesc(x); alCambiar(limitarDesc(x)); }), 500);
+      return;
+    }
     alCambiar(limitarDesc(el.value));
   });
   el.addEventListener('blur', () => { const v = limitarDesc(el.value); el.value = v || ''; });
 }
 campoPct($('#desc-otro-in'), v => { descuento = v; renderCuenta(); actualizarBarra(); });
+let autPendiente = null;
+function pedirAutorizacion(pct, alAutorizar){
+  autPendiente = alAutorizar;
+  $('#aut-txt').textContent = `Las vendedoras pueden dar hasta ${DESC_TOPE}% de descuento. Para dar ${pct}% un administrador debe escribir su PIN.`;
+  $('#aut-pin').value = ''; $('#dlg-aut').showModal(); setTimeout(() => $('#aut-pin').focus(), 50);
+}
+async function confirmarAutorizacion(){
+  const pin = $('#aut-pin').value.trim();
+  if (!/^\d{4}$/.test(pin)) return toast('Escriba los 4 números del PIN');
+  const u = await usuarioPorPin(pin);
+  if (!u || u.rol !== 'admin') { $('#aut-pin').value = ''; return toast('Ese PIN no es de un administrador'); }
+  autorizadoPor = { id: u.id, nombre: u.nombre };
+  $('#dlg-aut').close(); pintarTopeDesc();
+  const f = autPendiente; autPendiente = null; if (f) f();
+  toast(`Descuento autorizado por ${u.nombre}`);
+}
+$('#aut-ok').onclick = confirmarAutorizacion;
+$('#aut-pin').addEventListener('input', () => { if ($('#aut-pin').value.length === 4) confirmarAutorizacion(); });
+/** Texto debajo de los campos de %: el tope que aplica ahora */
+function pintarTopeDesc(){
+  const t = usuario?.rol === 'admin' ? 'Administrador: sin tope' : autorizadoPor ? `Autorizado por ${autorizadoPor.nombre}` : `Máximo ${DESC_TOPE}%`;
+  document.querySelectorAll('.desc-tope').forEach(e => e.textContent = t);
+}
 
 /* Forma de pago */
 let pago = 'efectivo';
@@ -1986,7 +2031,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '22'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '23'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2734,6 +2779,7 @@ function armarVenta(){
     vendedora: usuario?.nombre || '', vendedoraId: usuario?.id || '', cliente: c.nombre || 'Consumidor final', clienteData: c, ivaPct: db.iva,
     lineas: carrito.map(l => ({ ...l, ...desglose(importeLinea(l), db.iva) })),
     totalBruto: t.bruto, descuentoPct: t.descPct, descuentoMonto: t.descM, descuentoLineas: t.descLineas || 0,
+    ...(autorizadoPor && usuario?.rol !== 'admin' && (t.descPct > DESC_TOPE || carrito.some(l => (l.desc || 0) > DESC_TOPE) || r2(t.descM + t.descLineas) > r2(carrito.reduce((a, l) => a + r2(l.cant * l.precio), 0) * DESC_TOPE / 100) + 0.01) ? { descuentoAutorizo: autorizadoPor.nombre } : {}),
     subtotal: t.sub, iva: t.iva, total: t.total
   };
 }
@@ -2791,6 +2837,7 @@ function mostrarPrefactura(v, borrador){
       <tr><td>IVA ${v.ivaPct}%</td><td class="r">${money(v.iva)}</td></tr>
       <tr><td><b>TOTAL A PAGAR</b></td><td class="r"><b>${money(v.total)}</b></td></tr>
     </table><hr>
+    ${v.descuentoAutorizo && esAdmin() ? `<div>Descuento autorizado por: ${esc(v.descuentoAutorizo)}</div>` : ''}
     <div>Forma de pago: ${PAGOS[v.pago || 'efectivo']}${v.banco && v.pago === 'transferencia' ? ' · ' + esc(v.banco) : ''}</div>
     ${v.pago && v.pago !== 'efectivo' ? `<div>Comprobante: ${v.comprobante === 'subido' ? 'foto guardada en el servidor' : v.comprobante === 'pendiente' ? 'foto por subir (sin internet)' : 'sin foto'}</div>` : ''}
     ${v.pagaCon ? `<div>Recibido: ${money(v.pagaCon)} · Vuelto: ${money(v.pagaCon - v.total)}</div>` : ''}<hr>
