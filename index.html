@@ -250,6 +250,21 @@
   .al-card .acc .btn{flex:1}
   .estado.atraso{background:var(--ink);color:#fff}
 
+  /* Selector propio (botón + hoja de opciones) */
+  select.sel-oculto{display:none !important}
+  .sel-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;height:48px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;font-size:16px;color:var(--ink);text-align:left;cursor:pointer}
+  .sel-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sel-btn.vacio span{color:var(--mut)}
+  .sel-btn svg.i{color:var(--mut);flex:none;width:20px;height:20px}
+  .sel-btn:focus-visible,.sel-btn:active{border-color:var(--c);box-shadow:0 0 0 3px var(--cl);outline:none}
+  .catrow .sel-btn{height:40px;font-size:15px;border-radius:10px}
+  .sel-lista{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .sel-lista button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:0 16px;border:0;border-bottom:1px solid var(--line);background:#fff;font:inherit;font-size:16px;text-align:left;cursor:pointer;color:var(--ink)}
+  .sel-lista button:last-child{border-bottom:0}
+  .sel-lista button:active{background:var(--bg)}
+  .sel-lista button.on{color:var(--c);font-weight:700;background:var(--cl)}
+  .sel-lista button svg.i{color:var(--c)}
+
   /* Aviso de actualización */
   .upd{position:sticky;top:calc(58px + env(safe-area-inset-top));z-index:19;display:flex;align-items:center;gap:10px;background:var(--cl);color:var(--c);padding:10px 14px;font-size:14px;font-weight:600;border-bottom:1px solid var(--line)}
   .upd span{flex:1}
@@ -877,6 +892,15 @@
     <div class="fld" style="margin-top:10px"><span class="lbl">Nota</span><input id="alf-nota"></div>
   </div>
   <div class="sh-f"><button class="btn ghost" id="alf-borrar"><span data-ic="trash"></span>Borrar</button><button class="btn pri" id="alf-ok"><span data-ic="check"></span>Guardar</button></div>
+</dialog>
+
+<!-- Selector de opciones (reemplaza la lista del sistema) -->
+<dialog id="dlg-sel">
+  <div class="sh-h"><h3 id="sel-tit">Elegir</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b" style="padding-top:10px">
+    <input id="sel-buscar" placeholder="Buscar…" autocomplete="off" hidden style="margin-bottom:10px">
+    <div id="sel-lista" class="sel-lista"></div>
+  </div>
 </dialog>
 
 <!-- Abrir caja -->
@@ -1746,14 +1770,15 @@ const API_BASE = '/api';
 const APP_TOKEN = 'V3legzBK7MCJ98OybltK8qZW'; // solo permite SUBIR fotos; para verlas hace falta la clave del administrador
 let fotoComp = null;
 /** Reduce la foto (máx. 1280 px, JPEG) para que pese poco y suba rápido */
-async function comprimirFoto(file){
+async function comprimirFoto(file, max = 1280, tipo = 'image/jpeg'){
   let img;
   try { img = await createImageBitmap(file); }
   catch { img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = URL.createObjectURL(file); }); }
-  const k = Math.min(1, 1280 / Math.max(img.width, img.height));
+  const k = Math.min(1, max / Math.max(img.width, img.height));
   const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
   c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.72);
+  if (tipo !== 'image/jpeg') { const ctx = c.getContext('2d'); ctx.globalCompositeOperation = 'destination-over'; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+  return c.toDataURL(tipo, 0.72);
 }
 function pintarFoto(){
   $('#foto-prev').innerHTML = fotoComp ? `<div class="foto-prev"><img src="${fotoComp}" alt="Comprobante"><button class="ib sm" id="foto-quitar" aria-label="Quitar foto">${ic('x')}</button></div>` : '';
@@ -1800,7 +1825,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '14'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '15'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2099,7 +2124,7 @@ let disfEdit = null, fotoDisfNueva = null;
 $('#alf-foto-in').addEventListener('click', () => permitirSalida());
 $('#alf-foto-in').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { fotoDisfNueva = await comprimirFoto(f); $('#alf-foto').innerHTML = `<img src="${fotoDisfNueva}" alt="Foto nueva">`; toast('Foto lista: toque Guardar'); } catch { toast('No se pudo leer la foto'); }
+  try { fotoDisfNueva = await comprimirFoto(f, 640, 'image/webp'); $('#alf-foto').innerHTML = `<img src="${fotoDisfNueva}" alt="Foto nueva">`; toast('Foto lista: toque Guardar'); } catch { toast('No se pudo leer la foto'); }
 });
 function abrirDisfraz(d){
   disfEdit = d || null; fotoDisfNueva = null;
@@ -3221,6 +3246,59 @@ $('#cat-guardar').onclick = () => {
 const dictCat = crearDictado({ btn: $('#cat-mic'), estado: $('#cat-estado'), area: $('#cat-texto'), ayuda: 'Toque el micrófono y diga cada producto con su precio', alTerminar: revisarCatalogo });
 $('#btn-cat-voz').onclick = () => { $('#cat-texto').value = ''; $('#cat-lista').innerHTML = ''; $('#dlg-cat').showModal(); dictCat.ui(); dictCat.toggle(); };
 $('#dlg-cat').addEventListener('close', () => dictCat.parar());
+
+/* ================= Selector propio =================
+   Las listas desplegables del sistema no se pueden diseñar; se oculta el <select> (que sigue guardando el valor)
+   y se muestra un botón que abre una hoja con las opciones, con buscador si son muchas. */
+const valorSelect = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+let selActual = null;
+function mejorarSelect(sel){
+  if (sel.dataset.mejorado) return;
+  sel.dataset.mejorado = '1';
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'sel-btn'; b.innerHTML = `<span></span>${ic('chev')}`;
+  sel.classList.add('sel-oculto'); sel.after(b);
+  const pintar = () => {
+    const o = sel.options[sel.selectedIndex];
+    b.querySelector('span').textContent = o ? o.textContent : '';
+    b.classList.toggle('vacio', !sel.value); b.disabled = sel.disabled;
+  };
+  // si el código cambia el valor (sel.value = …), el botón se actualiza solo
+  Object.defineProperty(sel, 'value', { configurable: true, get(){ return valorSelect.get.call(this); }, set(v){ valorSelect.set.call(this, v); pintar(); } });
+  new MutationObserver(pintar).observe(sel, { childList: true, subtree: true, attributes: true });
+  sel.addEventListener('change', pintar);
+  b.addEventListener('click', () => abrirSelector(sel, pintar));
+  pintar();
+}
+function abrirSelector(sel, pintar){
+  selActual = { sel, pintar };
+  const lbl = sel.parentElement?.querySelector('.lbl')?.textContent || sel.getAttribute('aria-label') || 'Elegir';
+  $('#sel-tit').textContent = lbl.replace(/\s*\(.*\)\s*$/, '');
+  const muchas = sel.options.length > 12;
+  $('#sel-buscar').hidden = !muchas; $('#sel-buscar').value = '';
+  pintarOpciones(); $('#dlg-sel').showModal();
+  if (muchas) setTimeout(() => $('#sel-buscar').focus(), 60);
+  const on = $('#sel-lista').querySelector('.on'); if (on) on.scrollIntoView({ block: 'center' });
+}
+function pintarOpciones(){
+  const { sel } = selActual, q = clave($('#sel-buscar').value);
+  $('#sel-lista').innerHTML = [...sel.options].map((o, i) => (!q || clave(o.textContent).includes(q))
+    ? `<button type="button" data-i="${i}" class="${i === sel.selectedIndex ? 'on' : ''}"><span>${esc(o.textContent)}</span>${i === sel.selectedIndex ? ic('check') : ''}</button>` : '').join('')
+    || '<div class="empty">Sin resultados</div>';
+}
+$('#sel-buscar').addEventListener('input', pintarOpciones);
+$('#sel-lista').addEventListener('click', e => {
+  const b = e.target.closest('button[data-i]'); if (!b || !selActual) return;
+  const { sel, pintar } = selActual;
+  sel.selectedIndex = +b.dataset.i; pintar();
+  sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true }));
+  $('#dlg-sel').close();
+});
+document.querySelectorAll('select').forEach(mejorarSelect);
+new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => {
+  if (n.nodeType !== 1) return;
+  if (n.tagName === 'SELECT') mejorarSelect(n); else n.querySelectorAll?.('select').forEach(mejorarSelect);
+}))).observe(document.body, { childList: true, subtree: true });
 
 /* ================= Inicio ================= */
 function init(){

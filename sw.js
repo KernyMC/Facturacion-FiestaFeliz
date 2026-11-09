@@ -1,5 +1,5 @@
 // Service worker: primero intenta la red (para recibir mejoras) y si no hay internet usa la copia guardada.
-const CACHE = 'fiesta-feliz-v14';
+const CACHE = 'fiesta-feliz-v15';
 const ARCHIVOS = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/deuna.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {

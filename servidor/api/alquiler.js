@@ -93,7 +93,11 @@ ${firma ? `<div class="firma"><img src="${firma}" alt="Firma del cliente">Firma 
       if (!ruta.startsWith('/api/disfraces') && !ruta.startsWith('/api/alquileres')) return false;
       if (req.method === 'GET' && ruta === '/api/disfraces/foto') {
         const did = t(url.searchParams.get('id'), 20).replace(/[^a-f0-9]/g, '');
-        try { const st = await s3.getObject(BUCKET, `_disfraces/fotos/${did}.jpg`); res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }); st.pipe(res); }
+        try {
+          let ext = 'jpg'; try { ext = (await leerJSON(`_disfraces/${did}.json`)).fotoExt || 'jpg'; } catch {}
+          const st = await s3.getObject(BUCKET, `_disfraces/fotos/${did}.${ext}`);
+          res.writeHead(200, { 'Content-Type': ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : 'image/jpeg', 'Cache-Control': 'public, max-age=604800' }); st.pipe(res);
+        }
         catch { json(res, 404, { error: 'sin foto' }); }
         return true;
       }
@@ -115,17 +119,19 @@ ${firma ? `<div class="firma"><img src="${firma}" alt="Firma del cliente">Firma 
       if (req.method === 'POST' && ruta === '/api/disfraces/foto') {
         if (!esAdmin) { json(res, 401, { error: 'solo el administrador' }); return true; }
         const d = await cuerpo(), did = t(d.id, 20).replace(/[^a-f0-9]/g, '');
-        const m = /^data:image\/(jpeg|png);base64,(.+)$/.exec(String(d.imagen || ''));
+        const m = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(String(d.imagen || ''));
         if (!did || !m) { json(res, 400, { error: 'foto inválida' }); return true; }
         let x; try { x = await leerJSON(`_disfraces/${did}.json`); } catch { json(res, 404, { error: 'no existe' }); return true; }
         const img = Buffer.from(m[2], 'base64');
-        await s3.putObject(BUCKET, `_disfraces/fotos/${did}.jpg`, img, img.length, { 'Content-Type': 'image/jpeg' });
-        x.foto = Date.now(); await guardarJSON(`_disfraces/${did}.json`, x); json(res, 200, x); return true;
+        const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+        if (x.fotoExt && x.fotoExt !== ext) { try { await s3.removeObject(BUCKET, `_disfraces/fotos/${did}.${x.fotoExt}`); } catch {} }
+        await s3.putObject(BUCKET, `_disfraces/fotos/${did}.${ext}`, img, img.length, { 'Content-Type': `image/${m[1]}` });
+        x.foto = Date.now(); x.fotoExt = ext; await guardarJSON(`_disfraces/${did}.json`, x); json(res, 200, x); return true;
       }
       if (req.method === 'POST' && ruta === '/api/disfraces/borrar') {
         if (!esAdmin) { json(res, 401, { error: 'solo el administrador' }); return true; }
         const d = await cuerpo(), did = t(d.id, 20).replace(/[^a-f0-9]/g, '');
-        await s3.removeObjects(BUCKET, [`_disfraces/${did}.json`, `_disfraces/fotos/${did}.jpg`]); json(res, 200, { ok: true }); return true;
+        await s3.removeObjects(BUCKET, [`_disfraces/${did}.json`, ...['jpg', 'png', 'webp'].map(x => `_disfraces/fotos/${did}.${x}`)]); json(res, 200, { ok: true }); return true;
       }
 
       // ----- Alquileres -----
