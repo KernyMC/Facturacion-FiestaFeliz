@@ -218,6 +218,11 @@
   .mw::before{content:"$";position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--mut);font-weight:600;pointer-events:none}
   .mw input{padding-left:28px;font-weight:600;font-variant-numeric:tabular-nums}
 
+  /* Aviso de actualización */
+  .upd{position:sticky;top:calc(58px + env(safe-area-inset-top));z-index:19;display:flex;align-items:center;gap:10px;background:var(--cl);color:var(--c);padding:10px 14px;font-size:14px;font-weight:600;border-bottom:1px solid var(--line)}
+  .upd span{flex:1}
+  .upd .btn{background:var(--c);color:#fff;border-color:var(--c)}
+
   /* Comprobantes, Deuna y búsqueda */
   .pay.desc button{height:44px;font-size:15px}
   .logo-deuna{height:20px;width:auto}
@@ -283,6 +288,11 @@
   <button class="uchip" id="btn-mias" title="Mis ventas de hoy"><span data-ic="user"></span><span id="u-nombre"></span></button>
   <button class="top-ib" id="btn-salir" aria-label="Cerrar sesión" title="Cerrar sesión" data-ic="lock"></button>
 </header>
+
+<div class="upd" id="upd" hidden>
+  <span>Hay una versión nueva de la app. Se instalará al terminar la venta.</span>
+  <button class="btn sm" id="upd-btn">Actualizar</button>
+</div>
 
 <!-- Pantalla de PIN -->
 <div class="lock" id="lock">
@@ -502,6 +512,13 @@
       <div class="hint" id="a-clave-info">Necesaria para ver las fotos de transferencias y Deuna. Se guarda solo en este teléfono.</div>
       <div class="hint">Las fotos se guardan <b>2 meses</b> y luego se borran solas. Cada administrador recibe un aviso al entrar: 7 días antes del borrado y cuando ya se hizo.</div>
       <button class="btn soft block" id="btn-avisos" style="margin-top:10px">Ver avisos de borrado</button>
+    </div>
+
+    <div class="card">
+      <h2>Teléfonos y versiones <span class="sp"></span><span class="muted small" id="a-version" style="font-weight:400"></span></h2>
+      <div id="a-disp"></div>
+      <div class="hint">La app se actualiza sola: revisa cada 10 minutos (y al volver a abrirla) y se instala en la pantalla del PIN o cuando no hay una venta en curso. Aquí se ve qué versión tiene cada teléfono.</div>
+      <button class="btn soft block" id="btn-disp" style="margin-top:10px">Actualizar lista</button>
     </div>
 
     <div class="card">
@@ -926,6 +943,7 @@ setInterval(() => {
 
 let ultimoUsuarioId = null;
 function bloquear(msg){
+  setTimeout(() => typeof intentarActualizar === 'function' && intentarActualizar(), 300);
   if (usuario) ultimoUsuarioId = usuario.id;
   usuario = null; pinBuf = ''; pintarDots();
   $('#lock-msg').textContent = typeof msg === 'string' ? msg : 'Ingrese su PIN';
@@ -998,6 +1016,7 @@ function entrar(u){
   $('#u-nombre').textContent = u.nombre;
   renderVenta(); irA('vender'); actividad();
   const nom = u.nombre.split(' ')[0];
+  setTimeout(reportarDispositivo, 1500);
   if (u.rol !== 'vendedora') { setTimeout(() => revisarAvisos(false), 800); return toast('Hola, ' + nom); }
   // Vendedora: debe tener su caja abierta
   const t = turnoAbierto(u);
@@ -1556,6 +1575,69 @@ addEventListener('online', subirPendientes);
 setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
+/* ================= Actualizaciones de la app ================= */
+const APP_VERSION = '11'; // la sube sola el script desplegar.sh en cada publicación
+let versionNueva = null;
+const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+async function revisarVersion(){
+  if (!location.protocol.startsWith('http') || !navigator.onLine) return;
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = String((await r.json()).version || '');
+    if (v && v !== APP_VERSION) { versionNueva = v; intentarActualizar(); }
+  } catch {}
+}
+const momentoSeguro = () => !carrito.length && !document.querySelector('dialog[open]') && !verificando;
+async function actualizarAhora(){
+  // protección: no recargar dos veces por la misma versión (por ejemplo, si el servidor aún no termina de publicar)
+  try { if (sessionStorage.getItem('fiestaFeliz.recargado') === versionNueva) { $('#upd').hidden = false; return; } sessionStorage.setItem('fiestaFeliz.recargado', versionNueva); } catch {}
+  toast('Actualizando la app…');
+  try { const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update(); } catch {}
+  setTimeout(() => location.reload(), 500);
+}
+function intentarActualizar(){
+  if (!versionNueva) return;
+  if (momentoSeguro()) return actualizarAhora();   // sin venta en curso: se instala de una vez
+  $('#upd').hidden = false;                         // con venta en curso: aviso y se instala al terminar
+}
+$('#upd-btn').onclick = () => {
+  if (carrito.length && !confirm('Hay una venta sin cobrar que se perderá. ¿Actualizar de todos modos?')) return;
+  actualizarAhora();
+};
+['#dlg-pre', '#dlg-cuenta'].forEach(s => $(s).addEventListener('close', () => setTimeout(intentarActualizar, 300)));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) revisarVersion(); });
+setTimeout(revisarVersion, 5000);
+setInterval(revisarVersion, 10 * 60000);
+
+/* Cada teléfono avisa al servidor qué versión tiene, para que el administrador lo vea */
+async function reportarDispositivo(){
+  if (!usuario || !navigator.onLine || !location.protocol.startsWith('http')) return;
+  try {
+    await fetch(API_BASE + '/dispositivos', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-App-Token': APP_TOKEN },
+      body: JSON.stringify({ dev: db.dev, version: APP_VERSION, usuario: usuario.nombre, rol: usuario.rol, instalada: esInstalada() }) });
+  } catch {}
+}
+setInterval(reportarDispositivo, 30 * 60000);
+const haceCuanto = iso => { const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 1 ? 'ahora' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} día(s)`; };
+async function verDispositivos(){
+  const box = $('#a-disp');
+  $('#a-version').textContent = 'Este teléfono: v' + APP_VERSION;
+  if (!claveAdmin()) { box.innerHTML = '<div class="muted small">Escriba la clave del servidor (arriba) para ver los teléfonos.</div>'; return; }
+  box.innerHTML = '<div class="muted small">Cargando…</div>';
+  try {
+    const [rv, rd] = await Promise.all([fetch('version.json?t=' + Date.now(), { cache: 'no-store' }), fetch(API_BASE + '/dispositivos', { headers: { 'X-Admin-Token': claveAdmin() } })]);
+    const actual = rv.ok ? String((await rv.json()).version) : APP_VERSION;
+    if (!rd.ok) throw new Error(rd.status);
+    const lista = await rd.json();
+    box.innerHTML = lista.length ? lista.map(d => `<div class="prow">
+        <div class="pn"><b>${esc(d.usuario || '-')}${d.dev === db.dev ? ' (este teléfono)' : ''}</b><small>Teléfono ${esc(d.dev)} · ${d.instalada ? 'app instalada' : 'en el navegador'} · visto ${haceCuanto(d.visto)}</small></div>
+        <span class="estado${d.version === actual ? '' : ' abierta'}">${d.version === actual ? 'Al día' : 'Desactualizada'} · v${esc(d.version)}</span></div>`).join('')
+      : '<div class="empty">Aún ningún teléfono se ha reportado.</div>';
+  } catch (e) { box.innerHTML = `<div class="muted small">${e.message === '401' ? 'Clave del servidor incorrecta.' : 'No se pudo conectar con el servidor.'}</div>`; }
+}
+$('#btn-disp').onclick = verDispositivos;
+
 /* Ver comprobantes (solo administrador, con su clave del servidor) */
 const claveAdmin = () => { try { return localStorage.getItem('fiestaFeliz.claveServidor') || ''; } catch { return ''; } };
 async function fotoServidor(key){
@@ -2058,6 +2140,7 @@ $('#a-bloqueo').addEventListener('change', e => {
 });
 function renderAjustes(){
   $('#a-iva').value = db.iva;
+  verDispositivos();
   $('#a-bloqueo').checked = db.bloqueoAlSalir !== false;
   probarClave();
   pintarUbicacion();

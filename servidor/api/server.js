@@ -118,6 +118,26 @@ const servidor = http.createServer(async (req, res) => {
       return json(res, 200, await avisos());
     }
 
+    // Cada teléfono avisa qué versión de la app tiene (para que el administrador sepa si está actualizado)
+    if (req.method === 'POST' && ruta === '/api/dispositivos') {
+      if (!igual(req.headers['x-app-token'], APP_TOKEN)) return json(res, 401, { error: 'no autorizado' });
+      const d = JSON.parse((await leerCuerpo(req)).toString('utf8'));
+      const dev = String(d.dev || '');
+      if (!/^[A-Z0-9]{3,12}$/.test(dev)) return json(res, 400, { error: 'dispositivo inválido' });
+      const info = { dev, version: texto(d.version, 12), usuario: texto(d.usuario, 60), rol: texto(d.rol, 20),
+        navegador: texto(req.headers['user-agent'], 160), instalada: !!d.instalada, visto: new Date().toISOString() };
+      const b = Buffer.from(JSON.stringify(info));
+      await s3.putObject(BUCKET, `_dispositivos/${dev}.json`, b, b.length, { 'Content-Type': 'application/json' });
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && ruta === '/api/dispositivos') {
+      if (!esAdmin) return json(res, 401, { error: 'no autorizado' });
+      const lista = [];
+      for (const o of await listar('_dispositivos/')) { try { lista.push(JSON.parse(await streamATexto(await s3.getObject(BUCKET, o.name)))); } catch {} }
+      lista.sort((a, b) => String(b.visto).localeCompare(String(a.visto)));
+      return json(res, 200, lista);
+    }
+
     // Subir comprobante (desde cualquier teléfono de la app)
     if (req.method === 'POST' && ruta === '/api/comprobantes') {
       if (!igual(req.headers['x-app-token'], APP_TOKEN)) return json(res, 401, { error: 'no autorizado' });

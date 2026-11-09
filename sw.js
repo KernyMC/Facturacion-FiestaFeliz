@@ -1,5 +1,5 @@
 // Service worker: primero intenta la red (para recibir mejoras) y si no hay internet usa la copia guardada.
-const CACHE = 'fiesta-feliz-v9';
+const CACHE = 'fiesta-feliz-v11';
 const ARCHIVOS = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/deuna.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -11,7 +11,9 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const u = new URL(e.request.url);
+  // version.json y la API siempre van directo a internet (nunca desde la copia guardada)
+  if (e.request.method !== 'GET' || u.origin !== location.origin || u.pathname.endsWith('/version.json') || u.pathname.startsWith('/api/')) return;
   e.respondWith(
     fetch(e.request)
       .then(r => { const copia = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copia)); return r; })
