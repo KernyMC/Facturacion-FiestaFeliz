@@ -1167,8 +1167,16 @@ const limitarDesc = x => { x = parseFloat(String(x).replace(',', '.')); return x
 const importeLinea = l => r2(l.cant * l.precio * (1 - (l.desc || 0) / 100));
 const rebajaLinea = l => r2(r2(l.cant * l.precio) - importeLinea(l));
 const totalesDe = (lineas, iva) => desglose(lineas.reduce((a, l) => a + importeLinea(l), 0), iva);
-let descuento = 0, descOtro = false;
+let descuento = 0, descOtro = false, avisoTope = false;
+/** La suma de todos los descuentos (productos + total) no puede pasar del 10% de la venta sin descuentos */
+function topeDescTotal(){
+  const orig = r2(carrito.reduce((a, l) => a + r2(l.cant * l.precio), 0)), lineas = r2(carrito.reduce((a, l) => a + rebajaLinea(l), 0)), bruto = orig - lineas;
+  if (!(bruto > 0)) return 0;
+  return Math.max(0, Math.min(DESC_TOPE, Math.floor(((orig * DESC_TOPE / 100 - lineas) / bruto * 100 + 1e-9) * 2) / 2));
+}
 function totalesVenta(){
+  const tope = topeDescTotal();
+  if (descuento > tope) { descuento = tope; descOtro = !!tope; avisoTope = true; }
   const bruto = r2(carrito.reduce((a, l) => a + importeLinea(l), 0)), descM = r2(bruto * descuento / 100);
   const descLineas = r2(carrito.reduce((a, l) => a + rebajaLinea(l), 0));
   return { bruto, descPct: descuento, descM, descLineas, ...desglose(bruto - descM, db.iva) };
@@ -1870,6 +1878,10 @@ function renderCuenta(){
   $('#t-sub').textContent = money(t.sub); $('#t-iva').textContent = money(t.iva); $('#t-total').textContent = money(t.total);
   $('#t-desc-row').hidden = $('#t-desc-row2').hidden = !t.descPct;
   $('#t-bruto').textContent = money(t.bruto); $('#t-desc-pct').textContent = t.descPct; $('#t-desc').textContent = '-' + money(t.descM);
+  if (avisoTope) {
+    avisoTope = false; $('#desc-otro-in').value = descuento || '';
+    toast(descuento ? `Los descuentos juntos no pueden pasar del ${DESC_TOPE}%: el del total quedó en ${descuento}%` : `Los productos ya tienen el ${DESC_TOPE}% de descuento: no se puede dar más`);
+  }
   $('#t-dl-row').hidden = !t.descLineas; $('#t-dl').textContent = '-' + money(t.descLineas);
   $('#desc').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === 'otro' ? descOtro : !descOtro && +b.dataset.d === descuento));
   $('#desc-otro').hidden = !descOtro;
@@ -1974,7 +1986,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '21'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '22'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
