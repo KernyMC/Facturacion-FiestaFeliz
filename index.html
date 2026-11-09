@@ -219,6 +219,7 @@
   .mw input{padding-left:28px;font-weight:600;font-variant-numeric:tabular-nums}
 
   /* Comprobantes, Deuna y búsqueda */
+  .pay.desc button{height:44px;font-size:15px}
   .logo-deuna{height:20px;width:auto}
   .pay button.on .logo-deuna{filter:none}
   .foto-btn{display:flex;align-items:center;justify-content:center;gap:8px;height:56px;border:1.5px dashed var(--c);border-radius:12px;color:var(--c);font-weight:600;cursor:pointer;background:var(--cl)}
@@ -587,7 +588,15 @@
       </div>
     </details>
     <div id="cuenta-lineas"></div>
-    <div class="tot" style="margin-top:10px">
+    <span class="lbl" style="margin-top:12px">Descuento</span>
+    <div class="pay desc" id="desc">
+      <button data-d="0" class="on">Sin descuento</button>
+      <button data-d="5">5%</button>
+      <button data-d="10">10%</button>
+    </div>
+    <div class="tot" style="margin-top:4px">
+      <div id="t-desc-row" hidden><span>Suma de productos</span><span class="n" id="t-bruto">$0.00</span></div>
+      <div id="t-desc-row2" hidden><span>Descuento <span id="t-desc-pct">0</span>%</span><span class="n" id="t-desc">-$0.00</span></div>
       <div><span>Subtotal (sin IVA)</span><span class="n" id="t-sub">$0.00</span></div>
       <div><span>IVA <span class="iva-pct">15</span>%</span><span class="n" id="t-iva">$0.00</span></div>
       <div class="g"><span>Total</span><span class="n" id="t-total">$0.00</span></div>
@@ -858,6 +867,12 @@ function desglose(totalConIva, ivaPct){
   return { sub, iva: r2(total - sub), total };
 }
 const totalesDe = (lineas, iva) => desglose(lineas.reduce((a, l) => a + l.cant * l.precio, 0), iva);
+/* Descuento sobre el total de la venta (Sin descuento, 5% o 10%). El IVA se calcula sobre el total ya rebajado. */
+let descuento = 0;
+function totalesVenta(){
+  const bruto = r2(carrito.reduce((a, l) => a + l.cant * l.precio, 0)), descM = r2(bruto * descuento / 100);
+  return { bruto, descPct: descuento, descM, ...desglose(bruto - descM, db.iva) };
+}
 
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 
@@ -1270,6 +1285,7 @@ $('#btn-agregar').onclick = agregarDesdeFormulario;
 $('#e-precio').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregarDesdeFormulario(); } });
 
 function renderVenta(){
+  if (!carrito.length) descuento = 0;
   $('#card-venta').hidden = !carrito.length;
   $('#lineas').innerHTML = carrito.map((l, i) => {
     const d = desglose(l.cant * l.precio, db.iva);
@@ -1325,7 +1341,7 @@ $('#lineas').addEventListener('change', e => {
 $('#btn-vaciar').onclick = () => { if (confirm('¿Vaciar esta venta?')) { carrito = []; limpiarCliente(); renderVenta(); } };
 
 function actualizarBarra(){
-  const n = carrito.reduce((a, l) => a + l.cant, 0), t = totalesDe(carrito, db.iva);
+  const n = carrito.reduce((a, l) => a + l.cant, 0), t = totalesVenta();
   $('#cartbar').hidden = tabActual !== 'vender' || !carrito.length;
   $('#cb-n').textContent = `${n} ${n === 1 ? 'artículo' : 'artículos'} · IVA incluido`;
   $('#cb-total').textContent = money(t.total);
@@ -1429,11 +1445,19 @@ function renderCuenta(){
     const d = desglose(l.cant * l.precio, db.iva);
     return `<div class="line"><div class="ln" data-e="${i}"><b>${l.cant} × ${esc(l.nombre)}${ic('edit')}</b><small>${money(l.precio)} c/u · Sub ${money(d.sub)} · IVA ${money(d.iva)}</small></div><div class="lt n">${money(d.total)}</div></div>`;
   }).join('');
-  const t = totalesDe(carrito, db.iva);
+  const t = totalesVenta();
   $('#t-sub').textContent = money(t.sub); $('#t-iva').textContent = money(t.iva); $('#t-total').textContent = money(t.total);
+  $('#t-desc-row').hidden = $('#t-desc-row2').hidden = !t.descPct;
+  $('#t-bruto').textContent = money(t.bruto); $('#t-desc-pct').textContent = t.descPct; $('#t-desc').textContent = '-' + money(t.descM);
+  $('#desc').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.d === descuento));
   document.querySelectorAll('.iva-pct').forEach(e => e.textContent = db.iva);
   calcVuelto();
 }
+$('#desc').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  descuento = +b.dataset.d; renderCuenta(); actualizarBarra();
+  if (descuento) toast(`Descuento del ${descuento}% aplicado`);
+});
 
 /* Forma de pago */
 let pago = 'efectivo';
@@ -1589,7 +1613,7 @@ async function verComprobantesDelDia(fecha){
 }
 $('#pay').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setPago(b.dataset.p); });
 function calcVuelto(){
-  const paga = parseFloat($('#paga-con').value), t = totalesDe(carrito, db.iva).total;
+  const paga = parseFloat($('#paga-con').value), t = totalesVenta().total;
   $('#vuelto').value = paga > 0 ? (paga >= t ? money(paga - t) : 'Falta ' + money(t - paga)) : '';
 }
 $('#paga-con').addEventListener('input', calcVuelto);
@@ -1601,7 +1625,7 @@ function abrirCuenta(){
 $('#btn-ver-cuenta').onclick = abrirCuenta;
 
 function armarVenta(){
-  const t = totalesDe(carrito, db.iva), c = datosCliente();
+  const t = totalesVenta(), c = datosCliente();
   return {
     id: db.seq, uid: db.dev + '-' + db.seq, fecha: hoy(),
     hora: new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }),
@@ -1611,6 +1635,7 @@ function armarVenta(){
     pago, pagaCon: pago === 'efectivo' && parseFloat($('#paga-con').value) > 0 ? r2(parseFloat($('#paga-con').value)) : null,
     vendedora: usuario?.nombre || '', vendedoraId: usuario?.id || '', cliente: c.nombre || 'Consumidor final', clienteData: c, ivaPct: db.iva,
     lineas: carrito.map(l => ({ ...l, ...desglose(l.cant * l.precio, db.iva) })),
+    totalBruto: t.bruto, descuentoPct: t.descPct, descuentoMonto: t.descM,
     subtotal: t.sub, iva: t.iva, total: t.total
   };
 }
@@ -1630,7 +1655,7 @@ function registrar(){
       .then(subirPendientes).catch(() => toast('No se pudo guardar la foto en el teléfono'));
   }
   fotoComp = null; pintarFoto(); $('#pago-banco').value = '';
-  carrito = []; limpiarCliente(); setPago('efectivo'); $('#paga-con').value = ''; renderVenta();
+  carrito = []; descuento = 0; limpiarCliente(); setPago('efectivo'); $('#paga-con').value = ''; renderVenta();
   if ($('#dlg-cuenta').open) $('#dlg-cuenta').close();
   toast(`Venta registrada: ${money(v.total)} · ${PAGOS[v.pago]}`);
   mostrarPrefactura(v, false);
@@ -1661,6 +1686,7 @@ function mostrarPrefactura(v, borrador){
       ${v.lineas.map(l => `<tr><td>${l.cant}</td><td>${esc(l.nombre)}</td><td class="r">${money(l.precio)}</td><td class="r">${money(l.total)}</td></tr>`).join('')}
     </table><hr>
     <table>
+      ${v.descuentoPct ? `<tr><td>Suma de productos</td><td class="r">${money(v.totalBruto)}</td></tr><tr><td>Descuento ${v.descuentoPct}%</td><td class="r">-${money(v.descuentoMonto)}</td></tr>` : ''}
       <tr><td>Subtotal (sin IVA)</td><td class="r">${money(v.subtotal)}</td></tr>
       <tr><td>IVA ${v.ivaPct}%</td><td class="r">${money(v.iva)}</td></tr>
       <tr><td><b>TOTAL A PAGAR</b></td><td class="r"><b>${money(v.total)}</b></td></tr>
@@ -1684,6 +1710,7 @@ $('#pre-f').addEventListener('click', e => {
     const v = preActual;
     compartirTexto('Prefactura', [`FIESTA FELIZ - PREFACTURA N° ${v.uid || v.id}`, `${v.fecha} ${v.hora || ''} · Vendedora: ${v.vendedora}`, `Cliente: ${v.cliente}${v.clienteData?.id ? ' · CI/RUC ' + v.clienteData.id : ''}`, '',
       ...v.lineas.map(l => `${l.cant} x ${l.nombre}  ${money(l.precio)}  = ${money(l.total)}`), '',
+      ...(v.descuentoPct ? [`Suma: ${money(v.totalBruto)}`, `Descuento ${v.descuentoPct}%: -${money(v.descuentoMonto)}`] : []),
       `Subtotal: ${money(v.subtotal)}`, `IVA ${v.ivaPct}%: ${money(v.iva)}`, `TOTAL: ${money(v.total)}`, `Forma de pago: ${PAGOS[v.pago || 'efectivo']}`].join('\n'));
   }
   if (a === 'ok') $('#dlg-pre').close();
@@ -1731,8 +1758,8 @@ function descargar(texto, nombre, tipo){
 const aCSV = rows => '﻿' + rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
 $('#btn-csv').onclick = () => {
   const vs = filtrar($('#h-desde').value, $('#h-hasta').value, $('#h-vendedora').value);
-  const rows = [['Venta','Fecha','Hora','Vendedora','Forma de pago','Cliente','Cédula/RUC','Cantidad','Producto','Precio unit (c/IVA)','Subtotal (s/IVA)','IVA','Total']];
-  vs.forEach(v => v.lineas.forEach(l => rows.push([v.uid || v.id, v.fecha, v.hora, v.vendedora, PAGOS[v.pago || 'efectivo'], v.cliente, v.clienteData?.id, l.cant, l.nombre, l.precio.toFixed(2), l.sub.toFixed(2), l.iva.toFixed(2), l.total.toFixed(2)])));
+  const rows = [['Venta','Fecha','Hora','Vendedora','Forma de pago','Cliente','Cédula/RUC','Cantidad','Producto','Precio unit (c/IVA)','Subtotal (s/IVA)','IVA','Total línea','Descuento venta %','Total venta cobrado']];
+  vs.forEach(v => v.lineas.forEach(l => rows.push([v.uid || v.id, v.fecha, v.hora, v.vendedora, PAGOS[v.pago || 'efectivo'], v.cliente, v.clienteData?.id, l.cant, l.nombre, l.precio.toFixed(2), l.sub.toFixed(2), l.iva.toFixed(2), l.total.toFixed(2), v.descuentoPct || 0, v.total.toFixed(2)])));
   descargar(aCSV(rows), `ventas_${hoy()}.csv`, 'text/csv');
 };
 
@@ -1799,7 +1826,8 @@ function renderDiario(){
     <div class="kpi"><small>Efectivo</small><b class="n">${money(tot.efectivo)}</b></div>
     <div class="kpi"><small>Transferencia</small><b class="n">${money(tot.transferencia)}</b></div>
     <div class="kpi"><small>Deuna</small><b class="n">${money(tot.deuna)}</b></div>
-    <div class="kpi"><small>IVA del día</small><b class="n">${money(s.iva)}</b></div>`;
+    <div class="kpi"><small>IVA del día</small><b class="n">${money(s.iva)}</b></div>
+    <div class="kpi"><small>Descuentos dados</small><b class="n">${money(vs.reduce((x, v) => x + (v.descuentoMonto || 0), 0))}</b></div>`;
   const ts = db.turnos.filter(t => t.fecha === f).sort((a, b) => a.abre.localeCompare(b.abre));
   const sueltas = vs.filter(v => !v.turnoId || !ts.some(t => t.id === v.turnoId));
   const so = sumaPagos(); sueltas.forEach(v => acumular(so, v));
@@ -2344,7 +2372,7 @@ const hablarMonto = n => { const d = Math.floor(n + 1e-9), c = Math.round((n - d
 function decirCuenta(){
   try {
     if (!window.speechSynthesis) return;
-    const t = totalesDe(carrito, db.iva);
+    const t = totalesVenta();
     const u = new SpeechSynthesisUtterance(`La cuenta es: subtotal, ${hablarMonto(t.sub)}. IVA, ${hablarMonto(t.iva)}. Total a pagar, ${hablarMonto(t.total)}.`);
     u.lang = 'es-ES';
     const voz = speechSynthesis.getVoices().find(x => x.lang && x.lang.toLowerCase().startsWith('es'));
