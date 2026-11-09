@@ -190,6 +190,7 @@
   .prow .pn small{display:block;color:var(--mut);font-size:12px}
 
   .reloj{text-align:center;font-size:44px;font-weight:800;color:var(--c);margin:4px 0 6px}
+  .lock-activar{margin-top:22px;background:rgba(255,255,255,.16);border:0;color:#fff;font:inherit;font-weight:700;padding:12px 18px;border-radius:12px;cursor:pointer}
   .lock-h{margin-top:24px;font-size:13px;color:rgba(255,255,255,.8)}
 
   /* Categorías, turnos y reportes */
@@ -379,6 +380,7 @@
       <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
       <span></span><button data-k="0">0</button><button class="x" data-k="del" aria-label="Borrar" data-ic="del"></button>
     </div>
+    <button class="lock-activar" id="lock-activar" hidden>Activar este teléfono</button>
   </div>
 </div>
 
@@ -1096,19 +1098,14 @@ document.querySelectorAll('[data-ic]').forEach(e => e.insertAdjacentHTML('afterb
 /* ================= Datos ================= */
 const KEY = 'fiestaFeliz.v2';
 // PIN iniciales (se cambian en Ajustes > Usuarios y PIN)
-const USUARIOS_INICIALES = () => [
-  { id: 'u1', nombre: 'Administrador', rol: 'admin', pin: '9090' },
-  { id: 'u5', nombre: 'Kevin Vargas', rol: 'admin', pin: '8774' },
-  { id: 'u6', nombre: 'Alex Vargas', rol: 'admin', pin: '4412' },
-  { id: 'u2', nombre: 'Liliana Sicha', rol: 'vendedora', pin: '9664' },
-  { id: 'u3', nombre: 'Amparito Caiza', rol: 'vendedora', pin: '5009' },
-  { id: 'u4', nombre: 'Giselle', rol: 'vendedora', pin: '3690' }
-];
+// Los usuarios y sus PIN (cifrados) vienen del servidor al activar el teléfono; no hay PIN escritos en el código.
+const USUARIOS_INICIALES = () => [];
 const nuevoDB = () => ({ iva: 15, usuarios: USUARIOS_INICIALES(), productos: [], ventas: [], clientes: [], turnos: [], seq: 1,
   dev: Math.random().toString(36).slice(2, 6).toUpperCase() });
 let db;
 try { db = JSON.parse(localStorage.getItem(KEY)) || nuevoDB(); } catch { db = nuevoDB(); }
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch {} };
+let tSyncProg;
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch {} clearTimeout(tSyncProg); tSyncProg = setTimeout(() => { if (typeof sincronizar === 'function') sincronizar(); }, 2500); };
 
 /* ================= Utilidades ================= */
 const $ = s => document.querySelector(s);
@@ -1207,7 +1204,9 @@ setInterval(() => {
 }, 30000);
 
 let ultimoUsuarioId = null;
+function mostrarActivarEnBloqueo(){ const b = document.getElementById('lock-activar'); if (b) b.hidden = !!(typeof syncToken === 'function' && syncToken()); }
 function bloquear(msg){
+  setTimeout(mostrarActivarEnBloqueo, 0);
   setTimeout(() => typeof intentarActualizar === 'function' && intentarActualizar(), 300);
   if (usuario) ultimoUsuarioId = usuario.id;
   usuario = null; pinBuf = ''; pintarDots();
@@ -1227,8 +1226,31 @@ function rechazarPin(msg){
   $('#lock-msg').textContent = msg; vibrar(); pinBuf = ''; pintarDots();
 }
 let verificando = false;
-function validarPin(){
-  const u = db.usuarios.find(x => x.pin === pinBuf);
+/** PIN cifrado: nunca se guarda el número, solo una huella (PBKDF2) con una sal propia de cada usuario */
+async function hashPin(pin, sal){
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: new TextEncoder().encode('fiesta:' + sal), iterations: 20000, hash: 'SHA-256' }, k, 256);
+  return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+const nuevaSal = () => [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
+async function usuarioPorPin(pin, excluirId){
+  for (const u of db.usuarios) {
+    if (u.id === excluirId) continue;
+    if (u.pinHash ? (await hashPin(pin, u.sal)) === u.pinHash : u.pin === pin) return u;
+  }
+  return null;
+}
+/** Los PIN que aún estaban en texto se cifran (una sola vez) */
+async function cifrarPins(){
+  let cambio = false;
+  for (const u of db.usuarios) if (u.pin && !u.pinHash) { u.sal = nuevaSal(); u.pinHash = await hashPin(u.pin, u.sal); delete u.pin; cambio = true; }
+  if (cambio) save();
+}
+async function validarPin(){
+  if (!db.usuarios.length) return rechazarPin('Este teléfono no tiene usuarios: toque "Activar este teléfono"');
+  verificando = true; $('#lock-msg').textContent = 'Verificando…';
+  const u = await usuarioPorPin(pinBuf);
+  verificando = false;
   if (!u) return rechazarPin('PIN incorrecto');
   if (u.rol === 'vendedora' && !dentroHorario() && !turnoAbierto(u))
     return rechazarPin(`Fuera de horario. Se puede usar de ${horario().abre} a ${horario().cierra}`);
@@ -1893,7 +1915,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '19'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '20'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2302,10 +2324,39 @@ const idSync = (tipo, o) => tipo === 'venta' ? String(o.uid || o.id) : tipo === 
 function encolar(tipo, obj, borrado){
   if (!obj || obj.demo) return;
   const id = idSync(tipo, obj); if (!id || id === 'n-') return;
-  const cola = lsGet(SYNC_COLA, []).filter(c => !(c.tipo === tipo && c.id === id));
-  cola.push({ tipo, id, fecha: obj.fecha || obj.ultima || null, data: obj, borrado: !!borrado });
-  lsSet(SYNC_COLA, cola);
+  encolarRaw(tipo, id, obj, borrado, obj.fecha || obj.ultima || null);
   setTimeout(sincronizar, 400);
+}
+function encolarRaw(tipo, id, data, borrado, fecha){
+  const cola = lsGet(SYNC_COLA, []).filter(c => !(c.tipo === tipo && c.id === id));
+  cola.push({ tipo, id, fecha: fecha || null, data, borrado: !!borrado });
+  lsSet(SYNC_COLA, cola);
+}
+/* Catálogo, usuarios y ajustes: se detectan los cambios comparando con la última versión enviada/recibida ("foto") */
+const SYNC_SNAP = 'fiestaFeliz.syncSnap';
+const datosProducto = p => ({ nombre: p.nombre, precio: p.precio > 0 ? p.precio : null, categoria: p.categoria || '', sub: p.sub || '', variable: !!p.variable, fijo: !!p.fijo });
+const datosUsuario = u => ({ id: u.id, nombre: u.nombre, rol: u.rol, sal: u.sal, pinHash: u.pinHash });
+const datosAjustes = () => ({ iva: db.iva, horario: db.horario || null, extension: db.extension || null, ubicacion: db.ubicacion || null, voz: db.voz !== false, bloqueoAlSalir: db.bloqueoAlSalir !== false });
+function registrosConfig(){
+  const out = [];
+  db.productos.filter(p => !p.demo).forEach(p => out.push({ tipo: 'producto', id: 'p-' + clave(p.nombre), data: datosProducto(p) }));
+  db.usuarios.filter(u => u.pinHash).forEach(u => out.push({ tipo: 'usuario', id: u.id, data: datosUsuario(u) }));
+  out.push({ tipo: 'ajuste', id: 'general', data: datosAjustes() });
+  return out;
+}
+function detectarCambios(){
+  const snap = lsGet(SYNC_SNAP, {}), vistos = new Set();
+  for (const r of registrosConfig()) {
+    const k = r.tipo + '|' + r.id, j = JSON.stringify(r.data); vistos.add(k);
+    if (snap[k] !== j) { encolarRaw(r.tipo, r.id, r.data, false); snap[k] = j; }
+  }
+  for (const k of Object.keys(snap)) if (!vistos.has(k)) { const i = k.indexOf('|'); encolarRaw(k.slice(0, i), k.slice(i + 1), { id: k.slice(i + 1) }, true); delete snap[k]; }
+  lsSet(SYNC_SNAP, snap);
+}
+/** "Más vendidos" y estadísticas del catálogo se calculan con las ventas de todos los teléfonos */
+function recalcularUsos(){
+  db.productos.forEach(p => { p.usos = 0; p.cant = 0; });
+  db.ventas.forEach(v => v.lineas.forEach(l => { const p = buscarProducto(l.nombre); if (!p) return; p.usos++; p.cant = r2(p.cant + l.cant); p.min = p.min > 0 ? Math.min(p.min, l.precio) : l.precio; p.max = Math.max(p.max || 0, l.precio); if (!p.ultimo || v.fecha > p.ultimo) p.ultimo = v.fecha; }));
 }
 let sincronizando = false, ultimaSync = (() => { try { return JSON.parse(localStorage.getItem('fiestaFeliz.syncUltima')) || 0; } catch { return 0; } })(), errorSync = '';
 async function sincronizar(){
@@ -2313,8 +2364,11 @@ async function sincronizar(){
   if (!syncToken() || !navigator.onLine || !location.protocol.startsWith('http')) return pintarSync();
   sincronizando = true;
   try {
-    for (let vuelta = 0; vuelta < 20; vuelta++) {
-      const lote = lsGet(SYNC_COLA, []).slice(0, 200);
+    const primera = lsGet('fiestaFeliz.syncPrimera', false);
+    if (!primera) detectarCambios();
+    for (let vuelta = 0; vuelta < 30; vuelta++) {
+      const soloBajar = lsGet('fiestaFeliz.syncPrimera', false);
+      const lote = soloBajar ? [] : lsGet(SYNC_COLA, []).slice(0, 200);
       const r = await fetch(API_BASE + '/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dev-Token': syncToken() },
         body: JSON.stringify({ desde: lsGet(SYNC_CURSOR, 0), cambios: lote }) });
       if (r.status === 401) { errorSync = 'Este teléfono no está activado (o fue desactivado).'; return; }
@@ -2325,6 +2379,7 @@ async function sincronizar(){
       lsSet(SYNC_COLA, lsGet(SYNC_COLA, []).filter(c => !enviados.has(firma(c))));
       aplicarRemotos(d.registros || []);
       lsSet(SYNC_CURSOR, d.cursor);
+      if (soloBajar && !d.mas) { lsSet('fiestaFeliz.syncPrimera', false); detectarCambios(); continue; }
       if (!d.mas && !lsGet(SYNC_COLA, []).length) break;
     }
     ultimaSync = Date.now(); lsSet('fiestaFeliz.syncUltima', ultimaSync); errorSync = '';
@@ -2334,7 +2389,7 @@ async function sincronizar(){
 /** Mezcla lo que llega del servidor. Se actualiza el mismo objeto (no se reemplaza) para no romper referencias como el turno abierto. */
 function aplicarRemotos(regs){
   if (!regs.length) return;
-  let cambio = false;
+  let cambio = false, cambioCat = false;
   const mezclar = (lista, buscar, r) => {
     const i = lista.findIndex(buscar);
     if (r.borrado) { if (i >= 0) { lista.splice(i, 1); cambio = true; } return; }
@@ -2346,7 +2401,30 @@ function aplicarRemotos(regs){
     else if (r.tipo === 'turno') mezclar(db.turnos, t => t.id === r.id, r);
     else if (r.tipo === 'movimiento') mezclar(db.movimientos ||= [], m => m.id === r.id, r);
     else if (r.tipo === 'cliente') mezclar(db.clientes, c => idSync('cliente', c) === r.id, r);
+    else if (r.tipo === 'producto' || r.tipo === 'usuario' || r.tipo === 'ajuste') {
+      const snap = lsGet(SYNC_SNAP, {}), k = r.tipo + '|' + r.id;
+      if (r.tipo === 'producto') {
+        const i = db.productos.findIndex(p => 'p-' + clave(p.nombre) === r.id);
+        if (r.borrado) { if (i >= 0) db.productos.splice(i, 1); }
+        else if (i < 0) db.productos.push({ ...r.data, usos: 0, cant: 0, min: null, max: null, ultimo: '' });
+        else Object.assign(db.productos[i], r.data);
+        cambioCat = true;
+      } else if (r.tipo === 'usuario') {
+        const i = db.usuarios.findIndex(u => u.id === r.id);
+        if (r.borrado) { if (i >= 0) db.usuarios.splice(i, 1); }
+        else if (i < 0) db.usuarios.push({ ...r.data });
+        else { Object.assign(db.usuarios[i], r.data); delete db.usuarios[i].pin; }
+      } else if (!r.borrado) {
+        const a = r.data || {};
+        db.iva = a.iva ?? db.iva; db.horario = a.horario || undefined; db.extension = a.extension || undefined; db.ubicacion = a.ubicacion || undefined;
+        db.voz = a.voz; db.bloqueoAlSalir = a.bloqueoAlSalir;
+        if (typeof aplicarVoz === 'function') aplicarVoz();
+      }
+      if (r.borrado) delete snap[k]; else snap[k] = JSON.stringify(r.data);
+      lsSet(SYNC_SNAP, snap); cambio = true;
+    }
   }
+  if (cambio && (cambioCat || regs.some(r => r.tipo === 'venta'))) { recalcularUsos(); if (typeof renderGrid === 'function') renderGrid(); }
   if (!cambio) return;
   db.ventas.sort((a, b) => (a.fecha + (a.hora || '')).localeCompare(b.fecha + (b.hora || '')));
   if (turno && turno.cierra) turno = null; // si el administrador cerró la caja desde otro teléfono
@@ -2365,7 +2443,9 @@ function pintarSync(){
   if ($('#a-sync-estado')) $('#a-sync-estado').textContent = act ? `Activado. ${txt}` : 'Este teléfono aún no está activado.';
   if ($('#btn-activar')) $('#btn-activar').innerHTML = `${ic('phone')}${act ? 'Volver a activar' : 'Activar este teléfono'}`;
 }
-$('#btn-activar').onclick = async () => {
+$('#btn-activar').onclick = () => activarTelefono();
+$('#lock-activar').onclick = () => activarTelefono();
+async function activarTelefono(){
   let clave = claveAdmin();
   if (!clave) clave = (prompt('Clave del servidor (la del administrador). No se guardará en este teléfono:') || '').trim();
   if (!clave) return;
@@ -2376,6 +2456,7 @@ $('#btn-activar').onclick = async () => {
     if (!r.ok) throw 0;
     const { token } = await r.json();
     try { localStorage.setItem(SYNC_TOKEN, token); } catch {}
+    lsSet('fiestaFeliz.syncPrimera', true); lsSet(SYNC_CURSOR, 0); // primero se baja lo del servidor (usuarios, catálogo, ajustes)
     // primera vez: se envía todo lo que este teléfono ya tenía (menos los datos de ejemplo)
     if (!lsGet('fiestaFeliz.syncInicial', false)) {
       db.ventas.filter(v => !v.demo).forEach(v => encolar('venta', v));
@@ -2384,9 +2465,22 @@ $('#btn-activar').onclick = async () => {
       db.clientes.forEach(c => encolar('cliente', c));
       lsSet('fiestaFeliz.syncInicial', true);
     }
-    toast('Teléfono activado. Sincronizando…'); sincronizar();
+    toast('Teléfono activado. Descargando datos…');
+    await sincronizar();
+    if (!db.usuarios.length) await crearPrimerAdmin();
+    $('#lock-activar').hidden = true;
+    if (!usuario) $('#lock-msg').textContent = 'Listo. Ingrese su PIN';
   } catch { toast('No se pudo activar. Revise el internet.'); }
-};
+}
+/** Solo si en ningún lado hay usuarios todavía (instalación nueva) */
+async function crearPrimerAdmin(){
+  const nombre = (prompt('No hay usuarios todavía. Nombre del administrador:') || '').trim(); if (!nombre) return;
+  const pin = (prompt('PIN de 4 números para ' + nombre + ':') || '').trim();
+  if (!/^\d{4}$/.test(pin)) return toast('El PIN debe tener 4 números');
+  const sal = nuevaSal();
+  db.usuarios.push({ id: 'u' + Date.now().toString(36), nombre: titulo(nombre), rol: 'admin', sal, pinHash: await hashPin(pin, sal) });
+  save(); sincronizar(); toast('Administrador creado');
+}
 $('#btn-sync-ahora').onclick = () => { errorSync = ''; sincronizar(); };
 addEventListener('online', sincronizar);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(sincronizar, 800); });
@@ -3069,7 +3163,7 @@ function renderAjustes(){
   $('#btn-demo-cargar').hidden = nDemo > 0;
   $('#btn-demo-quitar').hidden = !nDemo;
   $('#a-users').innerHTML = db.usuarios.map((u, i) => `<div class="prow">
-      <div class="pn"><b>${esc(u.nombre)}</b><small>${u.rol === 'admin' ? 'Administrador' : 'Vendedora'} · PIN ${esc(u.pin)}</small></div>
+      <div class="pn"><b>${esc(u.nombre)}</b><small>${u.rol === 'admin' ? 'Administrador' : 'Vendedora'} · PIN ••••</small></div>
       <button class="ib sm plain" data-eu="${i}" aria-label="Editar">${ic('edit')}</button>
       <button class="ib sm plain" data-bu="${i}" aria-label="Borrar">${ic('trash')}</button></div>`).join('');
   renderClientes();
@@ -3167,19 +3261,22 @@ function abrirUsuario(i){
   userEdit = i;
   const u = i === null ? { nombre: '', rol: 'vendedora', pin: '' } : db.usuarios[i];
   $('#u-tit').textContent = i === null ? 'Nuevo usuario' : 'Editar usuario';
-  $('#u-f-nombre').value = u.nombre; $('#u-f-rol').value = u.rol; $('#u-f-pin').value = u.pin;
+  $('#u-f-nombre').value = u.nombre; $('#u-f-rol').value = u.rol; $('#u-f-pin').value = '';
+  $('#u-f-pin').placeholder = i === null ? '4 números' : 'Dejar vacío para no cambiarlo';
   $('#dlg-user').showModal();
 }
 $('#btn-add-user').onclick = () => abrirUsuario(null);
-$('#u-f-ok').onclick = () => {
+$('#u-f-ok').onclick = async () => {
   const nombre = titulo($('#u-f-nombre').value), rol = $('#u-f-rol').value, pin = $('#u-f-pin').value.trim();
   if (!nombre) return toast('Escriba el nombre');
-  if (!/^\d{4}$/.test(pin)) return toast('El PIN debe tener 4 números');
-  if (db.usuarios.some((u, i) => u.pin === pin && i !== userEdit)) return toast('Ese PIN ya lo usa otra persona');
+  const cambiaPin = userEdit === null || pin !== '';
+  if (cambiaPin && !/^\d{4}$/.test(pin)) return toast('El PIN debe tener 4 números');
+  if (cambiaPin && await usuarioPorPin(pin, userEdit === null ? null : db.usuarios[userEdit].id)) return toast('Ese PIN ya lo usa otra persona');
   const quedanAdmin = db.usuarios.some((u, i) => u.rol === 'admin' && i !== userEdit) || rol === 'admin';
   if (!quedanAdmin) return toast('Debe quedar al menos un administrador');
-  if (userEdit === null) db.usuarios.push({ id: 'u' + Date.now().toString(36), nombre, rol, pin });
-  else Object.assign(db.usuarios[userEdit], { nombre, rol, pin });
+  const datosPin = cambiaPin ? await (async () => { const sal = nuevaSal(); return { sal, pinHash: await hashPin(pin, sal) }; })() : {};
+  if (userEdit === null) db.usuarios.push({ id: 'u' + Date.now().toString(36), nombre, rol, ...datosPin });
+  else { Object.assign(db.usuarios[userEdit], { nombre, rol, ...datosPin }); delete db.usuarios[userEdit].pin; }
   save(); $('#dlg-user').close(); renderAjustes(); toast('Usuario guardado');
   if (usuario) $('#u-nombre').textContent = usuario.nombre;
 };
@@ -3550,20 +3647,12 @@ function init(){
   db.clientes ||= []; db.productos ||= []; db.turnos ||= []; db.movimientos ||= [];
   if (!db.usuarios?.length) db.usuarios = USUARIOS_INICIALES();
   db.usuarios.forEach(u => { if (u.nombre === 'Amparito Kaisa') u.nombre = 'Amparito Caiza'; });
-  if (!db.usuarios.some(u => /giselle/i.test(u.nombre)) && !db.usuarios.some(u => u.pin === '3690'))
-    db.usuarios.push({ id: 'u4', nombre: 'Giselle', rol: 'vendedora', pin: '3690' });
   if (db.ventas.some(v => v.demo) && db.demoV !== 2) quitarDemo();      // ejemplo anterior -> se regenera
   db.productos.forEach(p => { p.categoria ||= detectarCategoria(p.nombre); });
   if (!db.catalogoInicial) { CATALOGO_INICIAL.forEach(([n, c, p]) => guardarEnCatalogo(n, c, p)); db.catalogoInicial = true; }
   if (db.demoV !== 2 && !db.ventas.some(v => !v.demo)) cargarDemo();
-  // Ajuste v3 (se aplica una sola vez en cada teléfono): nuevos PIN, administradores y catálogo vacío
+  // Ajuste v3 (se aplica una sola vez en cada teléfono): catálogo vacío
   if ((db.cfgV || 0) < 3) {
-    const setPin = (re, pin) => { const u = db.usuarios.find(x => re.test(x.nombre)); if (u) u.pin = pin; };
-    setPin(/liliana/i, '9664'); setPin(/amparito/i, '5009');
-    [['u5', 'Kevin Vargas', '8774'], ['u6', 'Alex Vargas', '4412']].forEach(([id, nombre, pin]) => {
-      const ex = db.usuarios.find(x => clave(x.nombre) === clave(nombre));
-      if (ex) Object.assign(ex, { pin, rol: 'admin' }); else db.usuarios.push({ id, nombre, rol: 'admin', pin });
-    });
     db.productos = []; db.catalogoInicial = true; // las categorías son fijas y se conservan
     db.cfgV = 3;
   }
@@ -3579,6 +3668,7 @@ function init(){
   db.dev ||= Math.random().toString(36).slice(2, 6).toUpperCase();
   save();
   aplicarVoz(); renderVenta(); bloquear();
+  cifrarPins().catch(() => {});
 }
 init();
 </script>
