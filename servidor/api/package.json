@@ -1,0 +1,9 @@
+{
+  "name": "fiesta-feliz-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API de comprobantes de pago (fotos en almacenamiento S3)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "minio": "8.0.5" }
+}
