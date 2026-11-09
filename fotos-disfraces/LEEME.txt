@@ -1,0 +1,2 @@
+Guarde aquí las fotos de los disfraces (jpg o png) con el nombre del disfraz,
+por ejemplo: Dinosaurio naranja.jpg, Tiburon azul.png, Capibara.jpg

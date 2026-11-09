@@ -27,7 +27,7 @@ subir() { # subir applicationId zip
 }
 
 if [ "${1:-}" = "api" ]; then
-  (cd servidor/api && zipear "$TMP/api.zip" Dockerfile package.json server.js)
+  (cd servidor/api && zipear "$TMP/api.zip" Dockerfile package.json server.js alquiler.js)
   subir "$API_ID" "$TMP/api.zip"
   echo "API enviada a Dokploy."
   exit 0

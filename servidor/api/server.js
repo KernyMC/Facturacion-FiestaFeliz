@@ -118,6 +118,12 @@ async function avisos() {
   };
 }
 
+const alquiler = require('./alquiler')({ s3, BUCKET, json, leerCuerpo, guardarJSON, leerJSON, leerTodos, listar, igual, APP_TOKEN, fechaEC, moverDias });
+
+// Un error inesperado nunca debe apagar el servidor: se registra y se sigue atendiendo
+process.on('unhandledRejection', e => console.error('Error no controlado:', e && e.message));
+process.on('uncaughtException', e => console.error('Excepción no controlada:', e && e.message));
+
 const servidor = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x');
@@ -134,6 +140,9 @@ const servidor = http.createServer(async (req, res) => {
       if (!esAdmin) return json(res, 401, { error: 'no autorizado' });
       return json(res, 200, await avisos());
     }
+
+    // Alquiler de disfraces (inventario, reservas, contrato firmado, correo)
+    if (await alquiler.rutas(req, res, ruta, url, esAdmin)) return;
 
     // Lista de compras: todos los teléfonos la ven y agregan; el administrador marca "comprado" o borra
     if (ruta.startsWith('/api/compras')) {
@@ -254,6 +263,7 @@ const servidor = http.createServer(async (req, res) => {
 servidor.listen(+PORT, async () => {
   console.log('API de comprobantes en puerto', PORT, '| fotos se guardan', DIAS_RETENCION, 'días');
   await asegurarBucket();
+  alquiler.sembrarDisfraces().catch(e => console.error('Disfraces:', e.message));
   limpiezaAutomatica();
   setInterval(limpiezaAutomatica, 6 * 60 * 60 * 1000); // revisa cada 6 horas
 });
