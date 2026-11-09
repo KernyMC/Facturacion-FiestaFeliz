@@ -118,6 +118,7 @@ async function avisos() {
   };
 }
 
+const sync = require('./sync')({ json, leerCuerpo, igual });
 const alquiler = require('./alquiler')({ s3, BUCKET, json, leerCuerpo, guardarJSON, leerJSON, leerTodos, listar, igual, APP_TOKEN, fechaEC, moverDias });
 
 // Un error inesperado nunca debe apagar el servidor: se registra y se sigue atendiendo
@@ -140,6 +141,9 @@ const servidor = http.createServer(async (req, res) => {
       if (!esAdmin) return json(res, 401, { error: 'no autorizado' });
       return json(res, 200, await avisos());
     }
+
+    // Sincronización de ventas, turnos y garantías entre teléfonos (PostgreSQL)
+    if (await sync.rutas(req, res, ruta, esAdmin)) return;
 
     // Alquiler de disfraces (inventario, reservas, contrato firmado, correo)
     if (await alquiler.rutas(req, res, ruta, url, esAdmin)) return;
@@ -262,6 +266,7 @@ const servidor = http.createServer(async (req, res) => {
 
 servidor.listen(+PORT, async () => {
   console.log('API de comprobantes en puerto', PORT, '| fotos se guardan', DIAS_RETENCION, 'días');
+  sync.iniciar().catch(e => console.error('Base de datos:', e.message));
   await asegurarBucket();
   alquiler.sembrarDisfraces().catch(e => console.error('Disfraces:', e.message));
   limpiezaAutomatica();

@@ -4,6 +4,11 @@
   "private": true,
   "description": "API de comprobantes de pago (fotos en almacenamiento S3)",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "minio": "8.0.5" }
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "minio": "8.0.5",
+    "pg": "8.23.1"
+  }
 }

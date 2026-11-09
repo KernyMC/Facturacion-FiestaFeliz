@@ -280,6 +280,12 @@
   .sel-lista button.on{color:var(--c);font-weight:700;background:var(--cl)}
   .sel-lista button svg.i{color:var(--c)}
 
+  /* Sincronización */
+  .sync-linea{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);margin:0 2px 10px}
+  .sync-linea:empty{display:none}
+  .sync-linea .pto{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+  .sync-linea .pto.no{background:var(--mut)}
+
   /* Aviso de actualización */
   .upd{position:sticky;top:calc(58px + env(safe-area-inset-top));z-index:19;display:flex;align-items:center;gap:10px;background:var(--cl);color:var(--c);padding:10px 14px;font-size:14px;font-weight:600;border-bottom:1px solid var(--line)}
   .upd span{flex:1}
@@ -422,6 +428,7 @@
 
   <!-- ================= HISTORIAL ================= -->
   <section id="historial">
+    <div class="sync-linea" id="sync-linea"></div>
     <div class="solo-ver">Solo consulta: puede ver las cuentas y prefacturas, pero no modificarlas ni anularlas.</div>
     <div class="card">
       <div class="row">
@@ -591,6 +598,16 @@
         <span><b>Dictado por voz</b><small>Muestra el botón de micrófono al vender. Si lo apaga, las ventas se registran solo escribiendo.</small></span>
         <input type="checkbox" id="a-voz" class="sw">
       </label>
+    </div>
+
+    <div class="card">
+      <h2>Sincronización entre teléfonos</h2>
+      <div class="muted small" id="a-sync-estado"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="btn pri" id="btn-activar"><span data-ic="phone"></span>Activar este teléfono</button>
+        <button class="btn soft" id="btn-sync-ahora"><span data-ic="up"></span>Sincronizar ahora</button>
+      </div>
+      <div class="hint">Cada teléfono se activa <b>una sola vez</b> con la clave del servidor (la del administrador). Desde ahí envía y recibe solo las ventas, turnos de caja, garantías y clientes de todos los teléfonos. Sin internet guarda todo y lo envía al volver la señal.</div>
     </div>
 
     <div class="card">
@@ -1150,7 +1167,7 @@ function irA(tab){
   tabActual = tab;
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   document.querySelectorAll('main section').forEach(s => s.classList.toggle('on', s.id === tab));
-  if (tab === 'historial') renderHistorial();
+  if (tab === 'historial') { renderHistorial(); pintarSync(); }
   if (tab === 'reportes') renderReportes();
   if (tab === 'ajustes') renderAjustes();
   if (tab === 'productos') renderProdAjustes();
@@ -1265,6 +1282,7 @@ function entrar(u){
   renderVenta(); irA('vender'); actividad();
   const nom = u.nombre.split(' ')[0];
   setTimeout(reportarDispositivo, 1500);
+  setTimeout(sincronizar, 800);
   setTimeout(cargarCompras, 2000);
   if (u.rol !== 'vendedora') { setTimeout(() => revisarAvisos(false), 800); return toast('Hola, ' + nom); }
   // Vendedora: debe tener su caja abierta
@@ -1315,7 +1333,7 @@ $('#abrir-ok').onclick = () => {
   if (!monto && !confirm('¿Empieza con la caja en $0.00?')) return;
   turno = { id: db.dev + '-T' + Date.now().toString(36), usuarioId: usuario.id, vendedora: usuario.nombre,
             fecha: hoy(), abre: horaAhora(), entradaTs: Date.now(), cierra: null, cajaInicial: monto, contado: null };
-  db.turnos.push(turno); save();
+  db.turnos.push(turno); save(); encolar('turno', turno);
   $('#dlg-abrir').close();
   toast(`Entrada marcada a las ${turno.abre} · caja con ${money(monto)}`);
 };
@@ -1347,7 +1365,7 @@ $('#cierre-ok').onclick = () => {
   const propia = usuario && t.usuarioId === usuario.id;
   t.contado = r2(c);
   if (propia || !t.cierra) { t.cierra = horaAhora(); t.fechaCierre = hoy(); t.salidaTs = Date.now(); }
-  save();
+  save(); encolar('turno', t);
   const o = resumenTurno(t), forzado = cierreForzado;
   cierreForzado = false;
   $('#dlg-cierre').close();
@@ -1756,6 +1774,7 @@ function guardarCliente(c, v){
   const datos = Object.fromEntries(Object.entries(c).filter(([, val]) => val));
   if (ex) Object.assign(ex, datos); else { ex = { id: '', nombre: '', telefono: '', direccion: '', correo: '', ...datos }; db.clientes.push(ex); }
   ex.compras = (ex.compras || 0) + 1; ex.total = r2((ex.total || 0) + v.total); ex.ultima = v.fecha;
+  return ex;
 }
 /* Sugerencias de clientes guardados al escribir nombre, cédula o teléfono */
 let cliSug = [];
@@ -1874,7 +1893,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '17'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '19'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2172,9 +2191,10 @@ function registrarAlquilerEnCaja(a, pagoA, pagoG){
     banco: pagoA === 'deuna' ? 'Deuna' : '', comprobante: null, pago: pagoA, pagaCon: null, vendedora: usuario?.nombre || '', vendedoraId: usuario?.id || '',
     cliente: a.cliente.nombre, clienteData: { id: a.cliente.cedula || '', nombre: a.cliente.nombre, telefono: a.cliente.telefono || '', direccion: '', correo: a.cliente.correo || '' },
     ivaPct: db.iva, lineas, totalBruto: base, descuentoPct: a.descuentoPct || 0, descuentoMonto: a.descuento || 0, subtotal: t.sub, iva: t.iva, total: t.total, alquilerId: a.id });
+  encolar('venta', db.ventas[db.ventas.length - 1]);
   db.seq++;
-  (db.movimientos ||= []).push({ id: Date.now().toString(36), tipo: 'garantia-recibida', monto: a.garantiaTotal, pago: pagoG, turnoId: turno?.id || null, fecha: hoy(), hora: horaAhora(), alquilerId: a.id, por: usuario?.nombre || '' });
-  save();
+  (db.movimientos ||= []).push({ id: db.dev + '-M' + Date.now().toString(36), tipo: 'garantia-recibida', monto: a.garantiaTotal, pago: pagoG, turnoId: turno?.id || null, fecha: hoy(), hora: horaAhora(), alquilerId: a.id, por: usuario?.nombre || '' });
+  save(); encolar('movimiento', db.movimientos[db.movimientos.length - 1]);
 }
 // --- Devolución ---
 function calcDevolucion(){
@@ -2221,7 +2241,7 @@ $('#ald-ok').onclick = async () => {
   const dev = r2(Math.max(0, Math.min(a.garantiaTotal, parseFloat($('#ald-devolver').value) || 0)));
   try {
     await apiAl('/alquileres', { id: a.id, accion: 'devolver', por: usuario?.nombre || '', devolucion: { ...c, descuento: r2(a.garantiaTotal - dev), garantiaDevuelta: dev, hora: horaAhora(), nota: $('#ald-nota').value.trim() } });
-    if (dev > 0) { (db.movimientos ||= []).push({ id: Date.now().toString(36), tipo: 'garantia-devuelta', monto: dev, pago: a.entrega?.pagoGarantia || 'efectivo', turnoId: turno?.id || null, fecha: hoy(), hora: horaAhora(), alquilerId: a.id, por: usuario?.nombre || '' }); save(); }
+    if (dev > 0) { (db.movimientos ||= []).push({ id: db.dev + '-M' + Date.now().toString(36), tipo: 'garantia-devuelta', monto: dev, pago: a.entrega?.pagoGarantia || 'efectivo', turnoId: turno?.id || null, fecha: hoy(), hora: horaAhora(), alquilerId: a.id, por: usuario?.nombre || '' }); save(); encolar('movimiento', db.movimientos[db.movimientos.length - 1]); }
     $('#dlg-al-dev').close(); toast(`Devolución registrada · se devuelven ${money(dev)}`); cargarAlquiler();
   } catch (e) { toast(!navigator.onLine ? 'Sin internet: no se pudo registrar' : 'No se pudo registrar: ' + e.message); }
 };
@@ -2272,6 +2292,106 @@ $('#alf-borrar').onclick = async () => {
   try { await apiAl('/disfraces/borrar', { id: disfEdit.id }, true); $('#dlg-al-disf').close(); toast('Disfraz borrado'); cargarAlquiler(); } catch { toast('No se pudo borrar'); }
 };
 setInterval(() => { if (usuario && tabActual === 'alquiler' && !document.querySelector('dialog[open]')) cargarAlquiler(); }, 60000);
+
+/* ================= Sincronización con la base de datos del VPS =================
+   Cada cambio (venta, anulación, turno de caja, garantía, cliente) se pone en una cola local y se envía al servidor.
+   El servidor devuelve lo nuevo de todos los teléfonos desde la última vez (cursor) y se mezcla con lo local. */
+const SYNC_TOKEN = 'fiestaFeliz.syncToken', SYNC_CURSOR = 'fiestaFeliz.syncCursor', SYNC_COLA = 'fiestaFeliz.syncCola';
+const syncToken = () => { try { return localStorage.getItem(SYNC_TOKEN) || ''; } catch { return ''; } };
+const idSync = (tipo, o) => tipo === 'venta' ? String(o.uid || o.id) : tipo === 'cliente' ? (o.id ? 'ci-' + o.id : 'n-' + clave(o.nombre || '')) : String(o.id || '');
+function encolar(tipo, obj, borrado){
+  if (!obj || obj.demo) return;
+  const id = idSync(tipo, obj); if (!id || id === 'n-') return;
+  const cola = lsGet(SYNC_COLA, []).filter(c => !(c.tipo === tipo && c.id === id));
+  cola.push({ tipo, id, fecha: obj.fecha || obj.ultima || null, data: obj, borrado: !!borrado });
+  lsSet(SYNC_COLA, cola);
+  setTimeout(sincronizar, 400);
+}
+let sincronizando = false, ultimaSync = (() => { try { return JSON.parse(localStorage.getItem('fiestaFeliz.syncUltima')) || 0; } catch { return 0; } })(), errorSync = '';
+async function sincronizar(){
+  if (sincronizando) return;
+  if (!syncToken() || !navigator.onLine || !location.protocol.startsWith('http')) return pintarSync();
+  sincronizando = true;
+  try {
+    for (let vuelta = 0; vuelta < 20; vuelta++) {
+      const lote = lsGet(SYNC_COLA, []).slice(0, 200);
+      const r = await fetch(API_BASE + '/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dev-Token': syncToken() },
+        body: JSON.stringify({ desde: lsGet(SYNC_CURSOR, 0), cambios: lote }) });
+      if (r.status === 401) { errorSync = 'Este teléfono no está activado (o fue desactivado).'; return; }
+      if (!r.ok) throw new Error(r.status);
+      const d = await r.json();
+      const firma = c => c.tipo + '|' + c.id + '|' + (c.borrado ? 1 : 0) + '|' + JSON.stringify(c.data);
+      const enviados = new Set(lote.map(firma));
+      lsSet(SYNC_COLA, lsGet(SYNC_COLA, []).filter(c => !enviados.has(firma(c))));
+      aplicarRemotos(d.registros || []);
+      lsSet(SYNC_CURSOR, d.cursor);
+      if (!d.mas && !lsGet(SYNC_COLA, []).length) break;
+    }
+    ultimaSync = Date.now(); lsSet('fiestaFeliz.syncUltima', ultimaSync); errorSync = '';
+  } catch { errorSync = navigator.onLine ? 'No se pudo sincronizar; se reintenta solo.' : 'Sin internet: se enviará al volver la señal.'; }
+  finally { sincronizando = false; pintarSync(); }
+}
+/** Mezcla lo que llega del servidor. Se actualiza el mismo objeto (no se reemplaza) para no romper referencias como el turno abierto. */
+function aplicarRemotos(regs){
+  if (!regs.length) return;
+  let cambio = false;
+  const mezclar = (lista, buscar, r) => {
+    const i = lista.findIndex(buscar);
+    if (r.borrado) { if (i >= 0) { lista.splice(i, 1); cambio = true; } return; }
+    if (i < 0) { lista.push(r.data); cambio = true; }
+    else if (JSON.stringify(lista[i]) !== JSON.stringify(r.data)) { Object.assign(lista[i], r.data); cambio = true; }
+  };
+  for (const r of regs) {
+    if (r.tipo === 'venta') mezclar(db.ventas, v => String(v.uid || v.id) === r.id, r);
+    else if (r.tipo === 'turno') mezclar(db.turnos, t => t.id === r.id, r);
+    else if (r.tipo === 'movimiento') mezclar(db.movimientos ||= [], m => m.id === r.id, r);
+    else if (r.tipo === 'cliente') mezclar(db.clientes, c => idSync('cliente', c) === r.id, r);
+  }
+  if (!cambio) return;
+  db.ventas.sort((a, b) => (a.fecha + (a.hora || '')).localeCompare(b.fecha + (b.hora || '')));
+  if (turno && turno.cierra) turno = null; // si el administrador cerró la caja desde otro teléfono
+  save();
+  if (tabActual === 'historial') renderHistorial();
+  if (tabActual === 'reportes') renderReportes();
+}
+function pintarSync(){
+  const pend = lsGet(SYNC_COLA, []).length, act = !!syncToken();
+  const txt = !act ? 'Este teléfono no está activado: solo se ven sus propias ventas.'
+    : errorSync ? errorSync + (pend ? ` (${pend} por enviar)` : '')
+    : pend ? `${pend} cambio(s) por enviar…`
+    : ultimaSync ? `Sincronizado ${haceCuanto(new Date(ultimaSync).toISOString())} · se ven las ventas de todos los teléfonos` : 'Sincronizando…';
+  const ok = act && !errorSync && !pend;
+  $('#sync-linea').innerHTML = `<span class="pto${ok ? '' : ' no'}"></span>${esc(txt)}`;
+  if ($('#a-sync-estado')) $('#a-sync-estado').textContent = act ? `Activado. ${txt}` : 'Este teléfono aún no está activado.';
+  if ($('#btn-activar')) $('#btn-activar').innerHTML = `${ic('phone')}${act ? 'Volver a activar' : 'Activar este teléfono'}`;
+}
+$('#btn-activar').onclick = async () => {
+  let clave = claveAdmin();
+  if (!clave) clave = (prompt('Clave del servidor (la del administrador). No se guardará en este teléfono:') || '').trim();
+  if (!clave) return;
+  try {
+    const r = await fetch(API_BASE + '/dispositivos/activar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Token': clave },
+      body: JSON.stringify({ dev: db.dev, nombre: usuario?.nombre || '' }) });
+    if (r.status === 401) return toast('Clave incorrecta');
+    if (!r.ok) throw 0;
+    const { token } = await r.json();
+    try { localStorage.setItem(SYNC_TOKEN, token); } catch {}
+    // primera vez: se envía todo lo que este teléfono ya tenía (menos los datos de ejemplo)
+    if (!lsGet('fiestaFeliz.syncInicial', false)) {
+      db.ventas.filter(v => !v.demo).forEach(v => encolar('venta', v));
+      db.turnos.filter(t => !t.demo).forEach(t => encolar('turno', t));
+      (db.movimientos || []).forEach(m => encolar('movimiento', m));
+      db.clientes.forEach(c => encolar('cliente', c));
+      lsSet('fiestaFeliz.syncInicial', true);
+    }
+    toast('Teléfono activado. Sincronizando…'); sincronizar();
+  } catch { toast('No se pudo activar. Revise el internet.'); }
+};
+$('#btn-sync-ahora').onclick = () => { errorSync = ''; sincronizar(); };
+addEventListener('online', sincronizar);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(sincronizar, 800); });
+setInterval(sincronizar, 30000);
+setTimeout(() => { pintarSync(); sincronizar(); }, 2500);
 
 /* ================= Lista de compras (compartida en el servidor) ================= */
 let compras = [], coSug = [];
@@ -2461,8 +2581,9 @@ function registrar(){
   db.seq++; db.ventas.push(v);
   v.lineas.forEach(l => aprender(l, v.fecha));
   const c = v.clienteData;
-  if (c.id || c.nombre) guardarCliente(c, v);
+  if (c.id || c.nombre) encolar('cliente', guardarCliente(c, v));
   save();
+  encolar('venta', v);
   if (v.comprobante === 'pendiente') {
     IDB.put({ ventaUid: String(v.uid), fecha: v.fecha, hora: v.hora, vendedora: v.vendedora, cliente: v.cliente, pago: v.pago, banco: v.banco, total: v.total, imagen: fotoComp })
       .then(subirPendientes).catch(() => toast('No se pudo guardar la foto en el teléfono'));
@@ -2529,6 +2650,7 @@ $('#pre-f').addEventListener('click', e => {
   if (a === 'ok') $('#dlg-pre').close();
   if (a === 'cobrar') { $('#dlg-pre').close(); registrar(); }
   if (a === 'anular' && esAdmin() && confirm('¿Anular esta venta? No se puede deshacer.')) {
+    encolar('venta', preActual, true);
     db.ventas = db.ventas.filter(v => (v.uid || v.id) !== (preActual.uid || preActual.id));
     save(); $('#dlg-pre').close(); toast('Venta anulada');
     if (tabActual === 'historial') renderHistorial();
@@ -2683,7 +2805,7 @@ $('#horas-ok').onclick = () => {
   if (!e) return toast('Escriba la hora de entrada');
   t.abre = e; t.entradaTs = tsDe(t.fecha, e);
   if (t.cierra && s) { t.cierra = s; let st = tsDe(t.fechaCierre || t.fecha, s); if (st < t.entradaTs) st += 864e5; t.salidaTs = st; }
-  t.horasCorregidas = true; save(); $('#dlg-horas').close(); renderReportes(); toast('Horario corregido');
+  t.horasCorregidas = true; save(); encolar('turno', t); $('#dlg-horas').close(); renderReportes(); toast('Horario corregido');
 };
 /** Reporte mensual: día por día, por vendedora y por forma de pago */
 function renderMensual(){
@@ -2932,6 +3054,7 @@ $('#a-bloqueo').addEventListener('change', e => {
 });
 function renderAjustes(){
   $('#a-iva').value = db.iva;
+  pintarSync();
   verDispositivos();
   $('#a-bloqueo').checked = db.bloqueoAlSalir !== false;
   probarClave();
