@@ -244,6 +244,21 @@
   .disf-foto.vacia{display:flex;align-items:center;justify-content:center;color:var(--mut)}
   .turno .th .disf-foto{width:44px;height:44px;margin:0;flex:none}
   .alf-foto img{width:100%;max-height:220px;object-fit:contain;background:var(--bg);border-radius:12px;margin-bottom:8px}
+  .pasos{display:flex;gap:6px;padding:10px 18px 0}
+  .pasos span{flex:1;text-align:center;font-size:12px;font-weight:700;color:var(--mut);padding:7px 0;border-bottom:3px solid var(--line)}
+  .pasos span.on{color:var(--c);border-color:var(--c)}
+  .pasos span.ok{color:var(--c);border-color:#a5b4fc}
+  .cond{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff}
+  .cond .ci{width:36px;height:36px;border-radius:10px;background:var(--cl);color:var(--c);display:flex;align-items:center;justify-content:center;flex:none}
+  .cond .ct{display:block;font-size:15px;font-weight:700;margin-bottom:2px}
+  .cond .cx{font-size:14px;color:var(--ink);line-height:1.4}
+  .acepta{display:flex;gap:12px;align-items:center;margin-top:10px;padding:12px;border:1.5px solid var(--c);border-radius:12px;background:var(--cl);cursor:pointer}
+  .acepta span{flex:1}
+  .acepta small{display:block;color:var(--mut);font-size:12px;margin-top:2px}
+  .chk3{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chk3 button{height:34px;padding:0 10px;border-radius:17px;border:1px solid var(--line);background:#fff;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+  .chk3 button.on{background:var(--c);border-color:var(--c);color:#fff}
+  .chk3 svg.i{width:16px;height:16px}
   .contrato-frame{width:100%;height:42vh;border:1px solid var(--line);border-radius:12px;background:#fff}
   .firma-cv{width:100%;height:170px;border:1.5px dashed var(--c);border-radius:12px;background:#fff;touch-action:none;display:block}
   .al-card .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -839,22 +854,51 @@
   <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="aln-ok"><span data-ic="check"></span>Guardar reserva</button></div>
 </dialog>
 
-<!-- Entrega: contrato + firma -->
+<!-- Entrega en 3 pasos: precio y revisión → condiciones → firma -->
 <dialog id="dlg-al-entrega" class="full">
-  <div class="sh-h"><h3>Entregar y firmar contrato</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-h"><h3 id="ale-tit">Entregar disfraz</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="pasos" id="ale-pasos"><span data-p="1" class="on">1 · Precio</span><span data-p="2">2 · Condiciones</span><span data-p="3">3 · Firma</span></div>
   <div class="sh-b">
-    <iframe id="ale-contrato" sandbox="" title="Contrato" class="contrato-frame"></iframe>
-    <span class="lbl" style="margin-top:12px">Firma del cliente (con el dedo)</span>
-    <canvas id="ale-firma" class="firma-cv"></canvas>
-    <button class="link" id="ale-borrar">Borrar firma</button>
-    <div class="fld"><span class="lbl">Correo para enviarle el contrato</span><input id="ale-correo" type="email" inputmode="email"></div>
-    <span class="lbl">Pago del alquiler (<b id="ale-total"></b>)</span>
-    <div class="pay desc" id="ale-pagoA"><button data-p="efectivo" class="on">Efectivo</button><button data-p="transferencia">Transferencia</button><button data-p="deuna">Deuna</button></div>
-    <span class="lbl">Garantía (<b id="ale-gar"></b>)</span>
-    <div class="pay desc" id="ale-pagoG"><button data-p="efectivo" class="on">Efectivo</button><button data-p="transferencia">Transferencia</button><button data-p="deuna">Deuna</button></div>
-    <label class="sw-row" style="margin-top:6px"><span><b>El cliente leyó y acepta el contrato</b></span><input type="checkbox" id="ale-acepta" class="sw"></label>
+    <!-- Paso 1: revisión al entregar, precio, descuento y pagos -->
+    <div id="ale-p1">
+      <div class="muted small" id="ale-cliente" style="margin-bottom:8px"></div>
+      <div id="ale-trajes"></div>
+      <div class="row" style="margin-top:6px">
+        <div><span class="lbl">Precio por día y por traje</span><input id="ale-precio" class="money"></div>
+        <div style="flex:0 0 110px"><span class="lbl">Días</span><input id="ale-dias" readonly tabindex="-1" style="background:var(--bg)"></div>
+      </div>
+      <span class="lbl" style="margin-top:12px">Descuento</span>
+      <div class="pay desc" id="ale-desc"><button data-d="no" class="on">Sin descuento</button><button data-d="p5">5%</button><button data-d="m5">−$5</button></div>
+      <div class="hint" id="ale-desc-info" style="margin:-4px 0 8px"></div>
+      <div class="tot" id="ale-tot"></div>
+      <span class="lbl" style="margin-top:12px">Pago del alquiler</span>
+      <div class="pay desc" id="ale-pagoA"><button data-p="efectivo" class="on">Efectivo</button><button data-p="transferencia">Transferencia</button><button data-p="deuna">Deuna</button></div>
+      <span class="lbl">Pago de la garantía</span>
+      <div class="pay desc" id="ale-pagoG"><button data-p="efectivo" class="on">Efectivo</button><button data-p="transferencia">Transferencia</button><button data-p="deuna">Deuna</button></div>
+    </div>
+    <!-- Paso 2: condiciones en tarjetas cortas -->
+    <div id="ale-p2" hidden>
+      <p class="muted small" style="margin:0 0 10px">Léale estas condiciones al cliente:</p>
+      <div id="ale-cond"></div>
+      <button class="link" id="ale-ver-contrato">Ver el contrato completo</button>
+    </div>
+    <!-- Paso 3: firma y aceptación juntas -->
+    <div id="ale-p3" hidden>
+      <div class="cuadre" id="ale-resumen" style="margin:0 0 12px"></div>
+      <span class="lbl">Firma del cliente (con el dedo)</span>
+      <canvas id="ale-firma" class="firma-cv"></canvas>
+      <label class="acepta" for="ale-acepta"><input type="checkbox" id="ale-acepta" class="sw"><span><b>Leí y acepto las condiciones del alquiler</b><small>Garantía, fechas de retiro y devolución, ventilador, roturas y atraso</small></span></label>
+      <button class="link" id="ale-borrar">Borrar firma y volver a firmar</button>
+      <div class="fld" style="margin-top:6px"><span class="lbl">Correo para enviarle el contrato (opcional)</span><input id="ale-correo" type="email" inputmode="email"></div>
+    </div>
   </div>
-  <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ale-ok"><span data-ic="check"></span>Firmar y entregar</button></div>
+  <div class="sh-f"><button class="btn" id="ale-atras">Cancelar</button><button class="btn pri" id="ale-sig">Siguiente<span data-ic="right"></span></button></div>
+</dialog>
+
+<!-- Contrato completo (vista previa) -->
+<dialog id="dlg-al-previo" class="full">
+  <div class="sh-h"><h3>Contrato completo</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b"><iframe id="alp-frame" sandbox="" title="Contrato" class="contrato-frame" style="height:70vh"></iframe></div>
 </dialog>
 
 <!-- Devolución: revisión y garantía -->
@@ -1020,6 +1064,11 @@ const ICONS = {
   lista:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/>',
   disfraz:'<path d="M8 3 4 6l2 4 2-1v12h8V9l2 1 2-4-4-3-2 2h-4z"/>',
   wa:'<path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/>',
+  escudo:'<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>',
+  reloj:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  ventilador:'<circle cx="12" cy="12" r="2"/><path d="M12 10c0-4 1-6 3-6s2 3-1 5M14 12c4 0 6 1 6 3s-3 2-5-1M12 14c0 4-1 6-3 6s-2-3 1-5M10 12c-4 0-6-1-6-3s3-2 5 1"/>',
+  tijera:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 8.5 20 20M8.5 15.5 20 4"/>',
+  guante:'<path d="M8 13V5a1.5 1.5 0 0 1 3 0v6V4a1.5 1.5 0 0 1 3 0v7V5.5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 7-6 7s-6-3-6-6l-1-3a1.5 1.5 0 0 1 3-1z"/>',
   camera:'<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
   image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'
 };
@@ -1825,7 +1874,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '15'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '17'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -1938,7 +1987,7 @@ function tarjetaAlquiler(a){
     <div class="th"><b>${esc(a.cliente.nombre)}</b><span class="estado${atrasado ? ' atraso' : a.estado === 'entregado' ? ' abierta' : ''}">${atrasado ? 'Atrasado' : ESTADO_AL[a.estado]}</span></div>
     <div class="small"><b>${a.disfraces.map(d => esc(d.nombre)).join(', ')}</b></div>
     <div class="muted small" style="margin-top:4px">Evento ${fechaCortaAl(a.fechaEvento)} · retira desde ${fechaCortaAl(a.retiroDesde)} · devuelve hasta ${fechaCortaAl(a.devolverHasta)}</div>
-    <div class="muted small">Alquiler ${money(a.totalAlquiler)} · Garantía ${money(a.garantiaTotal)}${a.cliente.telefono ? ' · ' + esc(a.cliente.telefono) : ''}${a.nota ? ' · ' + esc(a.nota) : ''}</div>
+    <div class="muted small">Alquiler ${money(a.totalAlquiler)}${a.descuento ? ` (−${a.descuentoPct}%)` : ''} · Garantía ${money(a.garantiaTotal)}${a.cliente.telefono ? ' · ' + esc(a.cliente.telefono) : ''}${a.nota ? ' · ' + esc(a.nota) : ''}</div>
     ${a.devolucion ? `<div class="muted small">Garantía devuelta ${money(a.devolucion.garantiaDevuelta)}${a.devolucion.descuento ? ' (se descontó ' + money(a.devolucion.descuento) + ')' : ''} · recibió ${esc(a.devolucion.por || '-')}</div>` : ''}
     ${a.devolucion?.acta?.length ? `<div class="muted small">Acta: ${a.devolucion.acta.map(x => `${esc(x.nombre)}: ${[x.completo ? 'completo' : 'incompleto', x.sinRoturas ? 'sin roturas' : 'roto/rayado', x.ventilador ? 'ventilador ok' : 'sin ventilador'].join(', ')}`).join(' · ')}</div>` : ''}
     ${a.contrato ? `<div class="muted small">Contrato firmado · correo: ${{ enviado: 'enviado', 'sin-correo': 'sin correo', 'sin-configurar': 'pendiente de configurar Resend', error: 'error al enviar', limite: 'límite diario' }[a.contrato.correo] || a.contrato.correo}</div>` : ''}
@@ -2012,44 +2061,117 @@ function crearFirma(cv){
 }
 const firma = crearFirma($('#ale-firma'));
 $('#ale-borrar').onclick = () => firma.limpiar();
-const segPago = id => { $(id).onclick = e => { const b = e.target.closest('button'); if (b) $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); }; };
-segPago('#ale-pagoA'); segPago('#ale-pagoG');
+let alActual = null, alePaso = 1, aleDesc = 'no', aleActa = [];
+/** Precio por día acordado + descuento (tope 20%: equivale a $5 en un traje de $25) */
+function calcEntrega(){
+  const a = alActual, n = a.disfraces.length, dias = a.dias || 1;
+  const pd = parseFloat($('#ale-precio').value) || 0, base = r2(pd * dias * n), tope = r2(base * 0.20);
+  let d = aleDesc === 'p5' ? r2(base * 0.05) : aleDesc === 'm5' ? 5 : 0;
+  d = Math.min(d, tope);
+  return { pd, base, d, pct: base ? Math.round(d / base * 100) : 0, total: r2(base - d), gar: a.garantiaTotal, n, dias };
+}
+function pintarEntrega(){
+  const c = calcEntrega();
+  $('#ale-desc [data-d="p5"]').textContent = `5% (−${money(r2(c.base * 0.05))})`;
+  $('#ale-desc [data-d="m5"]').textContent = `−$5 (${c.base ? Math.round(Math.min(5, c.base * 0.2) / c.base * 100) : 0}%)`;
+  $('#ale-desc').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === aleDesc));
+  $('#ale-desc-info').textContent = c.d ? `Descuento de ${money(c.d)}, equivale al ${c.pct}% del alquiler. Máximo permitido: 20%.` : 'Máximo permitido: 20% (equivale a $5 en un traje de $25).';
+  $('#ale-tot').innerHTML = `<div><span>${money(c.pd)} × ${c.n} traje(s) × ${c.dias} día(s)</span><span class="n">${money(c.base)}</span></div>
+    ${c.d ? `<div><span>Descuento (${c.pct}%)</span><span class="n">−${money(c.d)}</span></div>` : ''}
+    <div class="g"><span>Total alquiler</span><span class="n">${money(c.total)}</span></div>
+    <div><span>Garantía (se devuelve)</span><span class="n">${money(c.gar)}</span></div>`;
+}
+function pintarActaSalida(){
+  $('#ale-trajes').innerHTML = alActual.disfraces.map((x, i) => {
+    const d = disfraces.find(z => z.id === x.id) || x, ac = aleActa[i];
+    const chip = (k, txt) => `<button type="button" data-i="${i}" data-k="${k}" class="${ac[k] ? 'on' : ''}">${ac[k] ? ic('check') : ''}${txt}</button>`;
+    return `<div class="card turno" style="margin-bottom:8px;padding:10px"><div class="th">${fotoDisf(d)}<b>${esc(x.nombre)}</b></div>
+      <div class="muted small">Revise con el cliente antes de entregar:</div>
+      <div class="chk3">${chip('completo', d.guantes ? 'Completo con guantes' : 'Completo')}${chip('sinRoturas', 'Sin roturas')}${chip('ventilador', 'Ventilador funciona')}</div></div>`;
+  }).join('');
+}
+function irPaso(n){
+  alePaso = n;
+  [1, 2, 3].forEach(i => { $('#ale-p' + i).hidden = i !== n; });
+  $('#ale-pasos').querySelectorAll('span').forEach(sp => { const i = +sp.dataset.p; sp.classList.toggle('on', i === n); sp.classList.toggle('ok', i < n); });
+  $('#ale-atras').textContent = n === 1 ? 'Cancelar' : 'Atrás';
+  $('#ale-sig').innerHTML = n === 3 ? `${ic('check')}Firmar y entregar` : `Siguiente${ic('right')}`;
+  $('#dlg-al-entrega .sh-b').scrollTop = 0;
+  if (n === 2) pintarCondiciones();
+  if (n === 3) {
+    const c = calcEntrega();
+    $('#ale-resumen').innerHTML = `${esc(alActual.cliente.nombre)} paga <b>${money(c.total)}</b> de alquiler${c.d ? ` (con ${c.pct}% de descuento)` : ''} + <b>${money(c.gar)}</b> de garantía`;
+    setTimeout(firma.limpiar, 50);
+  }
+}
+function pintarCondiciones(){
+  const a = alActual, guantes = a.disfraces.some(x => (disfraces.find(z => z.id === x.id) || {}).guantes);
+  const cond = (icono, titulo, texto) => `<div class="cond"><div class="ci">${ic(icono)}</div><div><span class="ct">${titulo}</span><span class="cx">${texto}</span></div></div>`;
+  $('#ale-cond').innerHTML =
+    cond('calendario', 'Fechas', `Retira desde el <b>${fechaCortaAl(a.retiroDesde)}</b> y devuelve hasta el <b>${fechaCortaAl(a.devolverHasta)}</b>, en horario de atención.`) +
+    cond('escudo', `Garantía de ${money(a.garantiaTotal)}`, `${money(a.garantiaPorTraje)} por traje. Se devuelve si el traje llega completo, a tiempo y en buen estado.`) +
+    cond('reloj', 'Atraso', 'Si la devolución se retrasa, el local puede cobrar la garantía.') +
+    cond('ventilador', 'Ventilador', 'Si falta o se devuelve dañado, se descuentan $10 de la garantía por traje.') +
+    cond('tijera', 'Rayones o roturas', 'Si el traje vuelve rayado o roto, se cobra la garantía completa de ese traje, salvo que el cliente lo repare por su cuenta.') +
+    (guantes ? cond('guante', 'Traje completo', 'Los dinosaurios llevan guantes aparte: deben devolverse junto con el traje.') : cond('guante', 'Traje completo', 'El traje se devuelve con todas sus piezas y su ventilador.'));
+}
+const segPagoE = id => { $(id).onclick = e => { const b = e.target.closest('button'); if (b) $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); }; };
+segPagoE('#ale-pagoA'); segPagoE('#ale-pagoG');
 const pagoDe = id => $(id).querySelector('.on')?.dataset.p || 'efectivo';
-let alActual = null;
-async function abrirEntrega(a){
-  alActual = a;
-  $('#ale-total').textContent = money(a.totalAlquiler); $('#ale-gar').textContent = money(a.garantiaTotal);
+$('#ale-desc').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { aleDesc = b.dataset.d; pintarEntrega(); } });
+$('#ale-precio').addEventListener('input', pintarEntrega);
+$('#ale-trajes').addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (!b) return; aleActa[+b.dataset.i][b.dataset.k] = !aleActa[+b.dataset.i][b.dataset.k]; pintarActaSalida(); });
+$('#ale-borrar').onclick = () => firma.limpiar();
+$('#ale-ver-contrato').onclick = async () => {
+  const c = calcEntrega();
+  $('#alp-frame').srcdoc = '<p style="font-family:sans-serif;padding:16px">Cargando contrato…</p>'; $('#dlg-al-previo').showModal();
+  try { const r = await fetch(`${API_BASE}/alquileres/contrato?id=${alActual.id}&precioDia=${c.pd}&descuento=${c.d}`, { headers: { 'X-App-Token': APP_TOKEN } }); $('#alp-frame').srcdoc = await r.text(); }
+  catch { $('#alp-frame').srcdoc = '<p style="font-family:sans-serif;padding:16px">No se pudo cargar el contrato. Revise el internet.</p>'; }
+};
+function abrirEntrega(a){
+  alActual = a; aleDesc = 'no';
+  aleActa = a.disfraces.map(x => ({ id: x.id, nombre: x.nombre, guantes: !!(disfraces.find(z => z.id === x.id) || {}).guantes, completo: true, sinRoturas: true, ventilador: true }));
+  $('#ale-tit').textContent = `Entregar a ${a.cliente.nombre}`;
+  $('#ale-cliente').textContent = `Evento ${fechaCortaAl(a.fechaEvento)} · ${a.cliente.telefono || 'sin teléfono'}`;
+  $('#ale-precio').value = (a.precioDia || 25).toFixed(2); $('#ale-dias').value = a.dias || 1;
   $('#ale-correo').value = a.cliente.correo || ''; $('#ale-acepta').checked = false;
   ['#ale-pagoA', '#ale-pagoG'].forEach(id => $(id).querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === 0)));
-  $('#ale-contrato').srcdoc = '<p style="font-family:sans-serif;padding:16px">Cargando contrato…</p>';
-  $('#dlg-al-entrega').showModal(); setTimeout(firma.limpiar, 60);
-  try { const r = await fetch(`${API_BASE}/alquileres/contrato?id=${a.id}`, { headers: { 'X-App-Token': APP_TOKEN } }); $('#ale-contrato').srcdoc = await r.text(); }
-  catch { $('#ale-contrato').srcdoc = '<p style="font-family:sans-serif;padding:16px">No se pudo cargar el contrato. Revise el internet.</p>'; }
+  pintarActaSalida(); pintarEntrega(); irPaso(1);
+  $('#dlg-al-entrega').showModal();
 }
-$('#ale-ok').onclick = async () => {
-  const a = alActual; if (!a) return;
+$('#ale-atras').onclick = () => alePaso === 1 ? $('#dlg-al-entrega').close() : irPaso(alePaso - 1);
+$('#ale-sig').onclick = async () => {
+  if (alePaso === 1) {
+    if (!(calcEntrega().pd > 0)) return toast('Escriba el precio del alquiler');
+    if (aleActa.some(x => !x.completo || !x.sinRoturas || !x.ventilador) && !confirm('Hay puntos sin marcar en la revisión. ¿Entregar igual? Quedará anotado en el contrato.')) return;
+    return irPaso(2);
+  }
+  if (alePaso === 2) return irPaso(3);
+  // Paso 3: firmar y entregar
+  const a = alActual;
   if (firma.vacia()) return toast('Falta la firma del cliente');
-  if (!$('#ale-acepta').checked) return toast('Marque que el cliente acepta el contrato');
+  if (!$('#ale-acepta').checked) { toast('Marque que el cliente leyó y acepta las condiciones'); return $('#ale-acepta').focus(); }
   if (usuario?.rol === 'vendedora' && !turno) { toast('Primero marque su entrada y abra su caja'); return pedirCajaInicial(); }
-  const pagoA = pagoDe('#ale-pagoA'), pagoG = pagoDe('#ale-pagoG');
-  $('#ale-ok').disabled = true;
+  const c = calcEntrega(), pagoA = pagoDe('#ale-pagoA'), pagoG = pagoDe('#ale-pagoG');
+  $('#ale-sig').disabled = true;
   try {
-    const r = await apiAl('/alquileres/firmar', { id: a.id, firma: firma.png(), pagoAlquiler: pagoA, pagoGarantia: pagoG, correo: $('#ale-correo').value.trim(), por: usuario?.nombre || '', hora: horaAhora() });
+    const r = await apiAl('/alquileres/firmar', { id: a.id, firma: firma.png(), precioDia: c.pd, descuento: c.d, acta: aleActa, pagoAlquiler: pagoA, pagoGarantia: pagoG, correo: $('#ale-correo').value.trim(), por: usuario?.nombre || '', hora: horaAhora() });
     registrarAlquilerEnCaja(r, pagoA, pagoG);
     $('#dlg-al-entrega').close();
-    const c = r.contrato?.correo;
-    toast(c === 'enviado' ? 'Entregado. Contrato enviado al correo del cliente' : c === 'sin-configurar' ? 'Entregado. Contrato guardado (el envío por correo se activará con Resend)' : 'Entregado. Contrato guardado');
+    const co = r.contrato?.correo;
+    toast(co === 'enviado' ? 'Entregado. Contrato enviado al correo del cliente' : co === 'sin-configurar' ? 'Entregado. Contrato guardado (el envío por correo se activará con Resend)' : 'Entregado. Contrato guardado');
     cargarAlquiler();
   } catch (e) { toast(!navigator.onLine ? 'Sin internet: no se pudo registrar la entrega' : 'No se pudo registrar: ' + e.message); }
-  finally { $('#ale-ok').disabled = false; }
+  finally { $('#ale-sig').disabled = false; }
 };
 /** El alquiler entra a la caja como venta; la garantía va aparte (no es venta) */
 function registrarAlquilerEnCaja(a, pagoA, pagoG){
-  const lineas = [{ nombre: `Alquiler: ${a.disfraces.map(d => d.nombre).join(', ')}`, cant: 1, precio: a.totalAlquiler, ...desglose(a.totalAlquiler, db.iva) }], t = desglose(a.totalAlquiler, db.iva);
+  const base = a.precioBase ?? a.totalAlquiler;
+  const lineas = [{ nombre: `Alquiler: ${a.disfraces.map(d => d.nombre).join(', ')}`, cant: 1, precio: base, ...desglose(base, db.iva) }], t = desglose(a.totalAlquiler, db.iva);
   db.ventas.push({ id: db.seq, uid: db.dev + '-' + db.seq, fecha: hoy(), hora: horaAhora(), ts: new Date().toISOString(), turnoId: turno?.id || null,
     banco: pagoA === 'deuna' ? 'Deuna' : '', comprobante: null, pago: pagoA, pagaCon: null, vendedora: usuario?.nombre || '', vendedoraId: usuario?.id || '',
     cliente: a.cliente.nombre, clienteData: { id: a.cliente.cedula || '', nombre: a.cliente.nombre, telefono: a.cliente.telefono || '', direccion: '', correo: a.cliente.correo || '' },
-    ivaPct: db.iva, lineas, totalBruto: t.total, descuentoPct: 0, descuentoMonto: 0, subtotal: t.sub, iva: t.iva, total: t.total, alquilerId: a.id });
+    ivaPct: db.iva, lineas, totalBruto: base, descuentoPct: a.descuentoPct || 0, descuentoMonto: a.descuento || 0, subtotal: t.sub, iva: t.iva, total: t.total, alquilerId: a.id });
   db.seq++;
   (db.movimientos ||= []).push({ id: Date.now().toString(36), tipo: 'garantia-recibida', monto: a.garantiaTotal, pago: pagoG, turnoId: turno?.id || null, fecha: hoy(), hora: horaAhora(), alquilerId: a.id, por: usuario?.nombre || '' });
   save();

@@ -35,6 +35,17 @@ module.exports = function crearAlquiler({ s3, BUCKET, json, leerCuerpo, guardarJ
     console.log('Disfraces iniciales cargados:', DISFRACES_INICIALES.length);
   }
 
+  const DESC_MAX = 0.20;
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  /** Aplica el precio por día acordado y el descuento (con tope) y recalcula el total del alquiler */
+  function aplicarPrecio(a, precioDia, descuento) {
+    const pd = Number(precioDia);
+    if (pd > 0 && pd <= 500) a.precioDia = r2(pd);
+    const base = r2(a.precioDia * (a.dias || 1) * a.disfraces.length);
+    const d = Math.min(Math.max(0, Number(descuento) || 0), r2(base * DESC_MAX));
+    a.precioBase = base; a.descuento = r2(d); a.descuentoPct = base ? Math.round(d / base * 100) : 0; a.totalAlquiler = r2(base - d);
+    return a;
+  }
   /** Un alquiler ocupa sus disfraces desde el día de retiro hasta la devolución (o hasta hoy si está atrasado). */
   function choques(a, otros) {
     const ids = new Set(a.disfraces.map(d => d.id)), hoy = fechaEC();
@@ -55,7 +66,7 @@ module.exports = function crearAlquiler({ s3, BUCKET, json, leerCuerpo, guardarJ
 <p><b>Fecha del evento:</b> ${e(fechaLarga(a.fechaEvento))}</p>
 </div>
 <ol>
-<li><b>Precio:</b> ${dinero(a.precioDia)} por día de uso por disfraz. Total del alquiler: <b>${dinero(a.totalAlquiler)}</b>.</li>
+<li><b>Precio:</b> ${dinero(a.precioDia)} por día de uso por disfraz × ${n} disfraz(es) × ${a.dias || 1} día(s) = ${dinero(a.precioBase ?? a.totalAlquiler)}.${a.descuento ? ` Descuento: −${dinero(a.descuento)} (${a.descuentoPct}%).` : ''} <b>Total del alquiler: ${dinero(a.totalAlquiler)}</b>.</li>
 <li><b>Garantía:</b> el cliente deja ${dinero(a.garantiaPorTraje)} por cada disfraz (total <b>${dinero(a.garantiaTotal)}</b>), que se devuelve al entregar el disfraz completo, en buen estado y a tiempo.</li>
 <li><b>Retiro y devolución:</b> puede retirar el disfraz desde el <b>${e(fechaLarga(a.retiroDesde))}</b> y debe devolverlo hasta el <b>${e(fechaLarga(a.devolverHasta))}</b>, en el horario de atención del local.</li>
 <li><b>Atraso:</b> si la devolución se retrasa, el local podrá cobrar la garantía.</li>
@@ -64,6 +75,7 @@ module.exports = function crearAlquiler({ s3, BUCKET, json, leerCuerpo, guardarJ
 <li><b>Rayones o roturas:</b> si el disfraz se devuelve rayado o roto, se cobra la garantía completa de ese disfraz, salvo que el cliente lo repare por su cuenta y lo devuelva reparado.</li>
 <li>El cliente declara haber recibido el(los) disfraz(es) en buen estado y acepta estas condiciones.</li>
 </ol>
+${a.entrega?.acta?.length ? `<p><b>Estado al entregar (revisado con el cliente):</b></p><ul>${a.entrega.acta.map(x => `<li>${e(x.nombre)}: ${x.completo ? 'completo' + (x.guantes ? ' con guantes' : '') : 'incompleto'}, ${x.sinRoturas ? 'sin roturas ni rayones' : 'con observaciones'}, ${x.ventilador ? 'ventilador funcionando' : 'ventilador con falla'}</li>`).join('')}</ul>` : ''}
 ${firma ? `<div class="firma"><img src="${firma}" alt="Firma del cliente">Firma del cliente: <b>${e(c.nombre)}</b> · ${e(a.entrega?.fecha || fechaEC())} ${e(a.entrega?.hora || '')}</div>`
         : '<p class="firma">Firma del cliente: ______________________________</p>'}
 </body></html>`;
@@ -154,7 +166,7 @@ ${firma ? `<div class="firma"><img src="${firma}" alt="Firma del cliente">Firma 
             disfraces: elegidos.map(z => ({ id: z.id, nombre: z.nombre })), fechaEvento, dias,
             retiroDesde: moverDias(fechaEvento, -1), devolverHasta: moverDias(fechaEvento, dias),
             precioDia: PRECIO_DIA, garantiaPorTraje: GARANTIA };
-          a.totalAlquiler = a.precioDia * a.dias * a.disfraces.length; a.garantiaTotal = a.garantiaPorTraje * a.disfraces.length;
+          aplicarPrecio(a, d.precioDia, 0); a.garantiaTotal = a.garantiaPorTraje * a.disfraces.length;
           const ch = choques(a, todos);
           if (ch.length) { json(res, 409, { error: 'ocupado', detalle: ch.map(o => `${o.disfraces.map(x => x.nombre).join(', ')} (${o.cliente.nombre}, ${o.retiroDesde} a ${o.devolverHasta})`) }); return true; }
         } else { // cambio de estado: cancelar o devolver
@@ -182,6 +194,7 @@ ${firma ? `<div class="firma"><img src="${firma}" alt="Firma del cliente">Firma 
           return true;
         }
         let a; try { a = await leerJSON(`_alquileres/${aid}.json`); } catch { json(res, 404, { error: 'no existe' }); return true; }
+        if (url.searchParams.has('precioDia')) aplicarPrecio(a, url.searchParams.get('precioDia'), url.searchParams.get('descuento'));
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(contratoHTML(a, null)); return true;
       }
       // Entrega: firma del cliente + pagos; guarda el contrato y lo envía por correo
@@ -194,6 +207,8 @@ ${firma ? `<div class="firma"><img src="${firma}" alt="Firma del cliente">Firma 
         const pagos = ['efectivo', 'transferencia', 'deuna'];
         a.entrega = { fecha: fechaEC(), hora: t(d.hora, 8), por: t(d.por, 60), pagoAlquiler: pagos.includes(d.pagoAlquiler) ? d.pagoAlquiler : 'efectivo', pagoGarantia: pagos.includes(d.pagoGarantia) ? d.pagoGarantia : 'efectivo' };
         if (d.correo) a.cliente.correo = t(d.correo, 80);
+        aplicarPrecio(a, d.precioDia, d.descuento);
+        a.entrega.acta = (d.acta || []).slice(0, 20).map(x => ({ id: t(x.id, 20), nombre: t(x.nombre, 60), guantes: !!x.guantes, completo: !!x.completo, sinRoturas: !!x.sinRoturas, ventilador: !!x.ventilador }));
         a.estado = 'entregado';
         const png = Buffer.from(m[1], 'base64');
         await s3.putObject(BUCKET, `_contratos/${a.id}.png`, png, png.length, { 'Content-Type': 'image/png' });
