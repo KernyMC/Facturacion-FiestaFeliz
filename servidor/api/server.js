@@ -69,10 +69,27 @@ async function guardarAviso(aviso) {
   const b = Buffer.from(JSON.stringify(aviso));
   await s3.putObject(BUCKET, `_avisos/${aviso.creado.slice(0, 10)}-${aviso.id}.json`, b, b.length, { 'Content-Type': 'application/json' });
 }
+async function guardarJSON(key, obj) {
+  const b = Buffer.from(JSON.stringify(obj));
+  await s3.putObject(BUCKET, key, b, b.length, { 'Content-Type': 'application/json' });
+}
+async function leerJSON(key) { return JSON.parse(await streamATexto(await s3.getObject(BUCKET, key))); }
+async function leerTodos(prefijo) {
+  const out = [];
+  for (const o of await listar(prefijo)) { if (o.name.endsWith('.json')) { try { out.push(await leerJSON(o.name)); } catch {} } }
+  return out;
+}
+const claveTexto = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+
 let limpiando = false;
 async function limpiezaAutomatica() {
   if (limpiando) return; limpiando = true;
   try {
+    // Lista de compras: lo ya comprado se borra a los 30 días
+    try {
+      const limite = Date.now() - 30 * 864e5;
+      for (const c of await leerTodos('_compras/')) if (c.estado === 'comprado' && new Date(c.actualizado).getTime() < limite) await s3.removeObject(BUCKET, `_compras/${c.id}.json`);
+    } catch {}
     const corte = moverDias(fechaEC(), -DIAS_RETENCION); // se borran los días anteriores a esta fecha
     const viejos = (await listar('')).filter(o => { const f = fechaDe(o.name); return f && f < corte; });
     if (!viejos.length) return;
@@ -116,6 +133,49 @@ const servidor = http.createServer(async (req, res) => {
     if (req.method === 'GET' && ruta === '/api/avisos') {
       if (!esAdmin) return json(res, 401, { error: 'no autorizado' });
       return json(res, 200, await avisos());
+    }
+
+    // Lista de compras: todos los teléfonos la ven y agregan; el administrador marca "comprado" o borra
+    if (ruta.startsWith('/api/compras')) {
+      if (!igual(req.headers['x-app-token'], APP_TOKEN)) return json(res, 401, { error: 'no autorizado' });
+      if (req.method === 'GET' && ruta === '/api/compras') {
+        const limite = Date.now() - 14 * 864e5;
+        const lista = (await leerTodos('_compras/')).filter(c => c.estado === 'pendiente' || new Date(c.actualizado).getTime() > limite);
+        lista.sort((a, b) => (b.estado === 'pendiente') - (a.estado === 'pendiente') || (b.urgente === true) - (a.urgente === true) || String(a.creado).localeCompare(String(b.creado)));
+        return json(res, 200, lista);
+      }
+      if (req.method === 'POST' && ruta === '/api/compras') {
+        const d = JSON.parse((await leerCuerpo(req)).toString('utf8'));
+        const nombre = texto(d.nombre, 80).trim(), quien = texto(d.pedidoPor, 60) || 'Sin nombre';
+        if (!nombre) return json(res, 400, { error: 'falta el producto' });
+        const ahora = new Date().toISOString(), k = claveTexto(nombre);
+        let item = (await leerTodos('_compras/')).find(c => c.estado === 'pendiente' && c.clave === k);
+        if (item) { // ya estaba pedido: se suma quién lo pide y se actualizan los datos
+          if (!item.pedidoPor.includes(quien)) item.pedidoPor.push(quien);
+          if (d.urgente) item.urgente = true;
+          if (d.cantidad) item.cantidad = texto(d.cantidad, 40);
+          if (d.nota) item.nota = texto(d.nota, 140);
+          item.actualizado = ahora;
+        } else {
+          item = { id: crypto.randomBytes(6).toString('hex'), clave: k, nombre, cantidad: texto(d.cantidad, 40), nota: texto(d.nota, 140),
+            urgente: !!d.urgente, categoria: texto(d.categoria, 30), pedidoPor: [quien], creado: ahora, actualizado: ahora, estado: 'pendiente' };
+        }
+        await guardarJSON(`_compras/${item.id}.json`, item);
+        return json(res, 200, item);
+      }
+      if (req.method === 'POST' && ruta === '/api/compras/estado') {
+        const d = JSON.parse((await leerCuerpo(req)).toString('utf8'));
+        const id = seguro(d.id), key = `_compras/${id}.json`;
+        let item; try { item = await leerJSON(key); } catch { return json(res, 404, { error: 'no existe' }); }
+        const accion = String(d.accion || ''), por = texto(d.por, 60);
+        if (accion === 'comprado' || accion === 'borrar') { if (!esAdmin) return json(res, 401, { error: 'solo el administrador' }); }
+        else if (accion === 'cancelar') { if (!esAdmin && !(item.estado === 'pendiente' && item.pedidoPor.length === 1 && item.pedidoPor[0] === por)) return json(res, 403, { error: 'no permitido' }); }
+        else return json(res, 400, { error: 'acción inválida' });
+        if (accion === 'comprado') { Object.assign(item, { estado: 'comprado', compradoPor: por, actualizado: new Date().toISOString() }); await guardarJSON(key, item); }
+        else await s3.removeObject(BUCKET, key);
+        return json(res, 200, { ok: true });
+      }
+      return json(res, 404, { error: 'no encontrado' });
     }
 
     // Cada teléfono avisa qué versión de la app tiene (para que el administrador sepa si está actualizado)
