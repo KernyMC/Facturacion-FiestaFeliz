@@ -472,6 +472,10 @@
       <h2>Usuarios y PIN</h2>
       <div id="a-users"></div>
       <button class="btn soft block" id="btn-add-user" style="margin-top:10px"><span data-ic="plus"></span>Agregar usuario</button>
+      <label class="sw-row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+        <span><b>Pedir PIN al bloquear el celular</b><small>Cada vez que se bloquea la pantalla o se sale de la app, hay que volver a poner el PIN. Si vuelve la misma persona, sigue con su venta; si entra otra, empieza una venta nueva.</small></span>
+        <input type="checkbox" id="a-bloqueo" class="sw">
+      </label>
       <div class="hint"><b>Administrador:</b> ve y modifica todo (reportes, catálogo, ajustes, anular ventas). <b>Vendedora:</b> registra ventas, abre y cierra su caja, y puede <b>ver</b> las cuentas sin modificarlas. Cada venta queda guardada con el nombre de quien la registró.</div>
     </div>
 
@@ -920,9 +924,11 @@ setInterval(() => {
   }
 }, 30000);
 
-function bloquear(){
+let ultimoUsuarioId = null;
+function bloquear(msg){
+  if (usuario) ultimoUsuarioId = usuario.id;
   usuario = null; pinBuf = ''; pintarDots();
-  $('#lock-msg').textContent = 'Ingrese su PIN';
+  $('#lock-msg').textContent = typeof msg === 'string' ? msg : 'Ingrese su PIN';
   document.querySelectorAll('dialog[open]').forEach(d => d.close());
   $('#lock').hidden = false;
 }
@@ -984,7 +990,8 @@ setInterval(async () => {
   if (!r.ok && usuario?.rol === 'vendedora') { bloquear(); $('#lock-msg').textContent = r.msg; }
 }, 5 * 60000);
 function entrar(u){
-  if (usuario?.id !== u.id && carrito.length) { carrito = []; limpiarCliente(); }
+  // misma persona que dejó la app bloqueada: conserva su venta; otra persona: empieza de cero
+  if ((usuario?.id || ultimoUsuarioId) !== u.id && carrito.length) { carrito = []; descuento = 0; fotoComp = null; pintarFoto(); limpiarCliente(); }
   usuario = u; turno = null;
   $('#lock').hidden = true;
   document.body.classList.toggle('vend', !esAdmin());
@@ -1080,6 +1087,21 @@ $('#dlg-cierre').addEventListener('close', () => {
 });
 function actividad(){ clearTimeout(tInactivo); if (usuario) tInactivo = setTimeout(bloquear, MIN_BLOQUEO * 60000); }
 ['pointerdown', 'keydown'].forEach(ev => addEventListener(ev, actividad, { passive: true }));
+
+/* Pedir PIN otra vez cuando se bloquea el celular o se sale de la app (así se sabe quién la usa).
+   Excepción: al tomar la foto del comprobante o compartir por WhatsApp se permite salir hasta 3 minutos. */
+let salidaPermitidaHasta = 0, ocultoDesde = 0;
+const permitirSalida = (ms = 180000) => { salidaPermitidaHasta = Date.now() + ms; };
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    ocultoDesde = Date.now();
+    if (usuario && db.bloqueoAlSalir !== false && Date.now() > salidaPermitidaHasta) bloquear('Se bloqueó al salir de la app. Ingrese su PIN');
+  } else {
+    // volvió: si la salida "permitida" se pasó del tiempo, también se bloquea
+    if (usuario && db.bloqueoAlSalir !== false && ocultoDesde && Date.now() > salidaPermitidaHasta) bloquear('Se bloqueó al salir de la app. Ingrese su PIN');
+    salidaPermitidaHasta = 0; ocultoDesde = 0;
+  }
+});
 $('#pad').addEventListener('click', e => { const b = e.target.closest('button'); if (b) teclaPin(b.dataset.k); });
 addEventListener('keydown', e => {
   if ($('#lock').hidden) return;
@@ -1494,6 +1516,7 @@ function pintarFoto(){
   $('#foto-prev').innerHTML = fotoComp ? `<div class="foto-prev"><img src="${fotoComp}" alt="Comprobante"><button class="ib sm" id="foto-quitar" aria-label="Quitar foto">${ic('x')}</button></div>` : '';
   $('#foto-txt').textContent = fotoComp ? 'Cambiar foto' : 'Tomar foto o elegir captura';
 }
+$('#foto-in').addEventListener('click', () => permitirSalida());
 $('#foto-in').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   try { fotoComp = await comprimirFoto(f); pintarFoto(); toast('Foto lista'); } catch { toast('No se pudo leer la foto'); }
@@ -1774,6 +1797,7 @@ function cierre(vs){
   return { filas: Object.entries(pv).sort((a, b) => b[1].total - a[1].total), tot };
 }
 async function compartirTexto(titulo, txt){
+  permitirSalida();
   try {
     if (navigator.share) await navigator.share({ title: titulo, text: txt });
     else { await navigator.clipboard.writeText(txt); toast('Copiado. Péguelo en WhatsApp'); }
@@ -2028,8 +2052,13 @@ async function probarClave(){
     info.textContent = r.ok ? 'Clave correcta: conectado al servidor de comprobantes.' : 'La clave no es correcta.';
   } catch { info.textContent = 'Clave guardada. No hay conexión con el servidor ahora mismo.'; }
 }
+$('#a-bloqueo').addEventListener('change', e => {
+  db.bloqueoAlSalir = e.target.checked; save();
+  toast(e.target.checked ? 'Se pedirá el PIN cada vez que se bloquee el celular' : 'Ya no se pedirá el PIN al bloquear el celular');
+});
 function renderAjustes(){
   $('#a-iva').value = db.iva;
+  $('#a-bloqueo').checked = db.bloqueoAlSalir !== false;
   probarClave();
   pintarUbicacion();
   $('#a-abre').value = horario().abre; $('#a-cierra').value = horario().cierra;
