@@ -5,7 +5,7 @@
 const crypto = require('crypto');
 const { Pool } = require('pg');
 
-const TIPOS = new Set(['venta', 'turno', 'movimiento', 'cliente', 'producto', 'usuario', 'ajuste']);
+const TIPOS = new Set(['venta', 'turno', 'movimiento', 'cliente', 'producto', 'usuario', 'ajuste', 'aviso']);
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 module.exports = function crearSync({ json, leerCuerpo, igual }) {

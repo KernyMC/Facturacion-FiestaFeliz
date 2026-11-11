@@ -32,6 +32,28 @@
   .uchip svg.i{width:18px;height:18px}
   .top-ib{width:38px;height:38px;border-radius:10px;border:0;background:rgba(255,255,255,.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
   .top-ib svg.i{width:20px;height:20px}
+  .campana{position:relative}
+  .notif-n{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;border-radius:10px;background:#fff;color:var(--c);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
+  .notif-n[hidden]{display:none}
+  details.pl{border:1px solid var(--line);border-radius:10px;margin-top:8px;background:var(--card)}
+  details.pl summary{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;font-weight:600;list-style:none}
+  details.pl summary::-webkit-details-marker{display:none}
+  details.pl summary::after{content:'';width:8px;height:8px;border-right:2px solid var(--mut);border-bottom:2px solid var(--mut);transform:rotate(45deg);margin-left:10px;flex:none}
+  details.pl[open] summary::after{transform:rotate(-135deg)}
+  details.pl summary span{flex:1}
+  .pl-f{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-top:1px solid var(--line);font-size:14px}
+  .pl-f i{color:#b45309;font-style:normal}
+  .opc{display:grid;gap:8px;margin-bottom:12px}
+  .opc button{text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer;font-weight:600}
+  .opc button small{display:block;font-weight:400;color:var(--mut);margin-top:2px}
+  .opc button.on{border-color:var(--c);background:var(--cl);color:var(--c)}
+  .mov{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .mov small{display:block;color:var(--mut)}
+  .notif{padding:12px 0;border-bottom:1px solid var(--line);display:flex;gap:10px}
+  .notif.nuevo{background:var(--cl);margin:0 -12px;padding:12px}
+  .notif .al-ic{color:var(--c)}
+  .notif p{margin:2px 0 0;font-size:14px}
+  .notif small{color:var(--mut)}
   body.vend .adm{display:none !important}
   .solo-ver{display:none;font-size:13px;color:var(--c);background:var(--cl);border-radius:10px;padding:8px 12px;margin-bottom:12px}
   body.vend .solo-ver{display:block}
@@ -364,6 +386,7 @@
 <header class="top">
   <h1>Fiesta Feliz</h1>
   <button class="uchip" id="btn-mias" title="Mis ventas de hoy"><span data-ic="user"></span><span id="u-nombre"></span></button>
+  <button class="top-ib adm campana" id="btn-notif" aria-label="Notificaciones" title="Notificaciones" data-ic="campana"><span class="notif-n" id="notif-n" hidden></span></button>
   <button class="top-ib" id="btn-salir" aria-label="Cerrar sesión" title="Cerrar sesión" data-ic="lock"></button>
 </header>
 
@@ -436,7 +459,7 @@
   <!-- ================= HISTORIAL ================= -->
   <section id="historial">
     <div class="sync-linea" id="sync-linea"></div>
-    <div class="solo-ver">Solo consulta: puede ver las cuentas y prefacturas, pero no modificarlas ni anularlas.</div>
+    <div class="solo-ver">Puede ver las cuentas y prefacturas. Si registró mal una venta de su caja abierta, ábrala y toque <b>Borrar</b> (con una nota: el administrador recibe el aviso).</div>
     <div class="card">
       <div class="row">
         <div><span class="lbl">Desde</span><input type="date" id="h-desde"></div>
@@ -482,6 +505,11 @@
       <div class="kpis" id="r-kpis"></div>
       <h3 class="sec">Turnos y cuadre de caja</h3>
       <div id="r-turnos"></div>
+      <div class="card">
+        <h2>Caja fuerte</h2>
+        <div id="r-fuerte"></div>
+        <button class="btn soft block" id="btn-fuerte-r" style="margin-top:10px"><span data-ic="boveda"></span>Registrar movimiento</button>
+      </div>
       <div class="card">
         <h2>Comprobantes de transferencia y Deuna</h2>
         <div class="muted small" id="r-comp-info"></div>
@@ -1011,6 +1039,49 @@
   <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="cierre-ok"><span data-ic="lock"></span>Cerrar y marcar salida</button></div>
 </dialog>
 
+<!-- Caja cerrada: lo que quedó -->
+<dialog id="dlg-cierre-ok">
+  <div class="sh-h"><h3>Caja cerrada</h3></div>
+  <div class="sh-b" id="cok-b"></div>
+  <div class="sh-f"><button class="btn soft" id="cok-share"><span data-ic="share"></span>Compartir</button><button class="btn pri" id="cok-ok"><span data-ic="check"></span>Listo</button></div>
+</dialog>
+
+<!-- Caja fuerte -->
+<dialog id="dlg-fuerte">
+  <div class="sh-h"><h3>Caja fuerte</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b">
+    <div class="cuadre" id="f-info" style="margin:0 0 12px"></div>
+    <span class="lbl">¿Qué pasó?</span>
+    <div class="opc" id="f-tipo">
+      <button data-m="a-caja">Saqué de la caja fuerte para la caja<small>Préstamo para dar cambio o vuelto</small></button>
+      <button data-m="a-fuerte">Devolví a la caja fuerte<small>Sale efectivo de la caja</small></button>
+      <button data-m="deposito" class="adm">Guardé dinero en la caja fuerte<small>Dinero que entra desde afuera (solo administrador)</small></button>
+      <button data-m="retiro" class="adm">Saqué dinero de la caja fuerte<small>Para el banco, un pago u otro uso (solo administrador)</small></button>
+    </div>
+    <div class="fld"><span class="lbl">Monto</span><input id="f-monto" class="money"></div>
+    <div class="fld"><span class="lbl">Nota</span><input id="f-nota" placeholder="Ej.: sencillo para vuelto" maxlength="120"></div>
+    <h3 class="sec" style="margin-top:16px">Movimientos de hoy</h3>
+    <div id="f-lista"></div>
+  </div>
+  <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="f-ok"><span data-ic="check"></span>Registrar</button></div>
+</dialog>
+
+<!-- Borrar una venta (con nota) -->
+<dialog id="dlg-borrar">
+  <div class="sh-h"><h3 id="b-tit">Borrar venta</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b">
+    <p class="muted" id="b-txt" style="margin:0 0 12px"></p>
+    <div class="fld"><span class="lbl">¿Por qué se borra?</span><textarea id="b-motivo" rows="3" maxlength="200" placeholder="Ej.: registré dos veces la misma venta"></textarea></div>
+  </div>
+  <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="b-ok"><span data-ic="trash"></span>Borrar</button></div>
+</dialog>
+
+<!-- Notificaciones del administrador -->
+<dialog id="dlg-notif">
+  <div class="sh-h"><h3>Notificaciones</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b" id="notif-b"></div>
+</dialog>
+
 <!-- Corregir horario (solo administrador) -->
 <dialog id="dlg-horas">
   <div class="sh-h"><h3>Corregir horario</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
@@ -1076,6 +1147,8 @@
 <script>
 /* ================= Iconos ================= */
 const ICONS = {
+  campana:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  boveda:'<rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="12" cy="11.5" r="3"/><path d="M12 8.5v1M12 13.5v1M7 19v2M17 19v2"/>',
   mic:'<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
   stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
   cart:'<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.6 12.4a2 2 0 0 0 2 1.6h8.8a2 2 0 0 0 2-1.6L22 7H6"/>',
@@ -1352,7 +1425,12 @@ function entrar(u){
   setTimeout(reportarDispositivo, 1500);
   setTimeout(sincronizar, 800);
   setTimeout(cargarCompras, 2000);
-  if (u.rol !== 'vendedora') { setTimeout(() => revisarAvisos(false), 800); return toast('Hola, ' + nom); }
+  if (u.rol !== 'vendedora') {
+    setTimeout(() => revisarAvisos(false), 800);
+    pintarCampana();
+    setTimeout(() => { pintarCampana(); const n = notifNuevas().length; if (n) toast(`Tiene ${n} notificación(es) nueva(s): toque la campana`); }, 3500);
+    return toast('Hola, ' + nom);
+  }
   // Vendedora: debe tener su caja abierta
   const t = turnoAbierto(u);
   if (t && !dentroHorario()) { turno = t; toast('Fuera de horario: solo puede cerrar su caja'); return abrirCierre(t, 'horario'); }
@@ -1371,7 +1449,11 @@ function resumenTurno(t){
   // Garantías de alquiler en efectivo: no son venta, pero sí están en la caja
   o.garRec = 0; o.garDev = 0;
   (db.movimientos || []).forEach(m => { if (m.turnoId !== t.id || m.pago !== 'efectivo') return; if (m.tipo === 'garantia-recibida') o.garRec = r2(o.garRec + m.monto); else if (m.tipo === 'garantia-devuelta') o.garDev = r2(o.garDev + m.monto); });
-  o.esperado = r2((t.cajaInicial || 0) + o.efectivo + o.garRec - o.garDev);
+  // Caja fuerte: lo que se sacó para la caja (préstamo) y lo que se devolvió
+  o.fuerteIn = 0; o.fuerteOut = 0;
+  (db.movimientos || []).forEach(m => { if (m.tipo !== 'fuerte' || m.turnoId !== t.id) return; if (m.mov === 'a-caja') o.fuerteIn = r2(o.fuerteIn + m.monto); else if (m.mov === 'a-fuerte') o.fuerteOut = r2(o.fuerteOut + m.monto); });
+  o.prestamoPend = Math.max(0, r2(o.fuerteIn - o.fuerteOut));
+  o.esperado = r2((t.cajaInicial || 0) + o.efectivo + o.garRec - o.garDev + o.fuerteIn - o.fuerteOut);
   o.diferencia = t.contado == null ? null : r2(t.contado - o.esperado);
   return o;
 }
@@ -1406,6 +1488,17 @@ $('#abrir-ok').onclick = () => {
   toast(`Entrada marcada a las ${turno.abre} · caja con ${money(monto)}`);
 };
 let turnoCierre = null, cierreForzado = false;
+/** Ventas del turno agrupadas por forma de pago (para revisar al cerrar) */
+function listaPorPago(t){
+  const vs = db.ventas.filter(v => v.turnoId === t.id);
+  return Object.keys(PAGOS).map(p => {
+    const xs = vs.filter(v => (PAGOS[v.pago] ? v.pago : 'efectivo') === p), tot = r2(xs.reduce((a, v) => a + v.total, 0));
+    return `<details class="pl"><summary><span>${PAGOS[p]} · ${xs.length} venta(s)</span><b class="n">${money(tot)}</b></summary>
+      ${xs.length ? xs.map(v => `<div class="pl-f"><span>${v.hora || ''} · ${esc(v.cliente)}${p === 'transferencia' && v.banco ? ' · ' + esc(v.banco) : ''}${p !== 'efectivo' && !v.comprobante ? ' · <i>sin foto</i>' : ''}</span><span class="n">${money(v.total)}</span></div>`).join('') : '<div class="pl-f muted">Sin ventas</div>'}</details>`;
+  }).join('');
+}
+const lineasFuerte = o => (o.fuerteIn ? `<div class="kv"><span>Sacado de la caja fuerte</span><span class="n">+${money(o.fuerteIn)}</span></div>` : '')
+  + (o.fuerteOut ? `<div class="kv"><span>Devuelto a la caja fuerte</span><span class="n">-${money(o.fuerteOut)}</span></div>` : '');
 function abrirCierre(t, forzado){
   turnoCierre = t; cierreForzado = forzado || false;
   const o = resumenTurno(t);
@@ -1418,7 +1511,11 @@ function abrirCierre(t, forzado){
     <div class="kv"><span>Total vendido</span><span class="n">${money(o.total)}</span></div>
     ${o.garRec ? `<div class="kv"><span>Garantías recibidas (efectivo)</span><span class="n">+${money(o.garRec)}</span></div>` : ''}
     ${o.garDev ? `<div class="kv"><span>Garantías devueltas (efectivo)</span><span class="n">-${money(o.garDev)}</span></div>` : ''}
-    <div class="kv b"><span>Debe haber en caja (efectivo)</span><span class="n">${money(o.esperado)}</span></div>`;
+    ${lineasFuerte(o)}
+    <div class="kv b"><span>Debe haber en caja (efectivo)</span><span class="n">${money(o.esperado)}</span></div>
+    ${o.prestamoPend ? `<div class="cuadre">Faltan devolver ${money(o.prestamoPend)} a la caja fuerte</div>` : ''}
+    <div class="muted small" style="margin-top:12px">Toque cada forma de pago para ver la lista:</div>
+    ${listaPorPago(t)}`;
   $('#cierre-contado').value = ''; $('#cierre-dif').textContent = '';
   if (!$('#dlg-cierre').open) $('#dlg-cierre').showModal();
 }
@@ -1437,10 +1534,33 @@ $('#cierre-ok').onclick = () => {
   const o = resumenTurno(t), forzado = cierreForzado;
   cierreForzado = false;
   $('#dlg-cierre').close();
-  toast(`Caja cerrada · ${textoDif(o.diferencia)}`);
-  if (propia) { turno = null; if (forzado === true && dentroHorario()) pedirCajaInicial(); else setTimeout(bloquear, 1500); }
   if (tabActual === 'reportes') renderReportes();
+  mostrarCajaCerrada(t, o, () => { if (propia) { turno = null; if (forzado === true && dentroHorario()) pedirCajaInicial(); else bloquear(); } });
 };
+let trasCierre = null, textoCierre = '';
+function mostrarCajaCerrada(t, o, despues){
+  trasCierre = despues;
+  const nT = db.ventas.filter(v => v.turnoId === t.id && v.pago === 'transferencia').length, nD = db.ventas.filter(v => v.turnoId === t.id && v.pago === 'deuna').length;
+  $('#cok-b').innerHTML = `<div class="muted small" style="margin-bottom:8px">${esc(t.vendedora)} · ${t.fecha} · ${t.abre} a ${t.cierra}</div>
+    <div class="kpis" style="margin-bottom:10px"><div class="kpi main"><small>Quedó en caja (efectivo contado)</small><b class="n">${money(t.contado)}</b></div></div>
+    <div class="kv"><span>Debía haber</span><span class="n">${money(o.esperado)}</span></div>
+    <div class="cuadre">${textoDif(o.diferencia)}</div>
+    <div class="kv" style="margin-top:10px"><span>Efectivo vendido</span><span class="n">${money(o.efectivo)}</span></div>
+    <div class="kv"><span>Transferencias (${nT})</span><span class="n">${money(o.transferencia)}</span></div>
+    <div class="kv"><span>Deuna (${nD})</span><span class="n">${money(o.deuna)}</span></div>
+    <div class="kv b"><span>Total vendido</span><span class="n">${money(o.total)}</span></div>
+    ${lineasFuerte(o)}
+    ${o.prestamoPend ? `<div class="cuadre">Quedaron sin devolver ${money(o.prestamoPend)} a la caja fuerte</div>` : ''}
+    <div class="muted small" style="margin-top:10px">El efectivo queda en la caja. Las transferencias y Deuna ya están en la cuenta del banco.</div>`;
+  textoCierre = [`CIERRE DE CAJA - FIESTA FELIZ`, `${t.vendedora} · ${t.fecha} · ${t.abre} a ${t.cierra}`, '',
+    `Quedó en caja (contado): ${money(t.contado)}`, `Debía haber: ${money(o.esperado)} · ${textoDif(o.diferencia)}`, '',
+    `Efectivo: ${money(o.efectivo)}`, `Transferencias (${nT}): ${money(o.transferencia)}`, `Deuna (${nD}): ${money(o.deuna)}`, `Total vendido: ${money(o.total)}`,
+    ...(o.fuerteIn || o.fuerteOut ? [`Caja fuerte: sacado ${money(o.fuerteIn)} · devuelto ${money(o.fuerteOut)}`] : [])].join('\n');
+  $('#dlg-cierre-ok').showModal();
+}
+$('#dlg-cierre-ok').addEventListener('cancel', e => e.preventDefault());
+$('#cok-share').onclick = () => compartirTexto('Cierre de caja', textoCierre);
+$('#cok-ok').onclick = () => { $('#dlg-cierre-ok').close(); const f = trasCierre; trasCierre = null; if (f) f(); };
 $('#dlg-cierre').addEventListener('close', () => {
   if (cierreForzado && turnoCierre && !turnoCierre.cierra) { cierreForzado = false; bloquear(); }
 });
@@ -2031,7 +2151,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '23'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '24'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2516,6 +2636,7 @@ function aplicarRemotos(regs){
     if (r.tipo === 'venta') mezclar(db.ventas, v => String(v.uid || v.id) === r.id, r);
     else if (r.tipo === 'turno') mezclar(db.turnos, t => t.id === r.id, r);
     else if (r.tipo === 'movimiento') mezclar(db.movimientos ||= [], m => m.id === r.id, r);
+    else if (r.tipo === 'aviso') mezclar(db.avisos ||= [], a => a.id === r.id, r);
     else if (r.tipo === 'cliente') mezclar(db.clientes, c => idSync('cliente', c) === r.id, r);
     else if (r.tipo === 'producto' || r.tipo === 'usuario' || r.tipo === 'ajuste') {
       const snap = lsGet(SYNC_SNAP, {}), k = r.tipo + '|' + r.id;
@@ -2542,6 +2663,7 @@ function aplicarRemotos(regs){
   }
   if (cambio && (cambioCat || regs.some(r => r.tipo === 'venta'))) { recalcularUsos(); if (typeof renderGrid === 'function') renderGrid(); }
   if (!cambio) return;
+  pintarCampana();
   db.ventas.sort((a, b) => (a.fecha + (a.hora || '')).localeCompare(b.fecha + (b.hora || '')));
   if (turno && turno.cierra) turno = null; // si el administrador cerró la caja desde otro teléfono
   save();
@@ -2846,7 +2968,7 @@ function mostrarPrefactura(v, borrador){
   const compartir = `<button class="ib" data-a="share" aria-label="Compartir por WhatsApp">${ic('share')}</button>`;
   $('#pre-f').innerHTML = borrador
     ? `${compartir}<button class="btn soft" data-a="print">${ic('print')}Imprimir</button><button class="btn pri" data-a="cobrar">${ic('check')}Cobrar</button>`
-    : `${esAdmin() ? `<button class="btn ghost" data-a="anular">${ic('trash')}Anular</button>` : ''}${esAdmin() && v.comprobante ? `<button class="ib" data-a="foto" aria-label="Ver comprobante">${ic('image')}</button>` : ''}${compartir}<button class="btn soft" data-a="print">${ic('print')}Imprimir</button><button class="btn pri" data-a="ok">Listo</button>`;
+    : `${puedeBorrar(v) ? `<button class="btn ghost" data-a="anular">${ic('trash')}${esAdmin() ? 'Anular' : 'Borrar'}</button>` : ''}${esAdmin() && v.comprobante ? `<button class="ib" data-a="foto" aria-label="Ver comprobante">${ic('image')}</button>` : ''}${compartir}<button class="btn soft" data-a="print">${ic('print')}Imprimir</button><button class="btn pri" data-a="ok">Listo</button>`;
   if (!$('#dlg-pre').open) $('#dlg-pre').showModal();
 }
 $('#pre-f').addEventListener('click', e => {
@@ -2863,12 +2985,7 @@ $('#pre-f').addEventListener('click', e => {
   }
   if (a === 'ok') $('#dlg-pre').close();
   if (a === 'cobrar') { $('#dlg-pre').close(); registrar(); }
-  if (a === 'anular' && esAdmin() && confirm('¿Anular esta venta? No se puede deshacer.')) {
-    encolar('venta', preActual, true);
-    db.ventas = db.ventas.filter(v => (v.uid || v.id) !== (preActual.uid || preActual.id));
-    save(); $('#dlg-pre').close(); toast('Venta anulada');
-    if (tabActual === 'historial') renderHistorial();
-  }
+  if (a === 'anular' && puedeBorrar(preActual)) pedirBorrarVenta(preActual);
 });
 
 /* ================= Historial ================= */
@@ -2956,7 +3073,10 @@ function tarjetaTurno(t){
     <div class="kv"><span>Deuna</span><span class="n">${money(o.deuna)}</span></div>
     <div class="kv b"><span>Total vendido</span><span class="n">${money(o.total)}</span></div>
     ${o.garRec || o.garDev ? `<div class="kv"><span>Garantías (efectivo)</span><span class="n">+${money(o.garRec)} / -${money(o.garDev)}</span></div>` : ''}
+    ${lineasFuerte(o)}
     <div class="kv"><span>Debe haber en caja</span><span class="n">${money(o.esperado)}</span></div>
+    ${o.prestamoPend ? `<div class="cuadre">Faltan devolver ${money(o.prestamoPend)} a la caja fuerte</div>` : ''}
+    ${listaPorPago(t)}
     ${abierta ? `<button class="btn soft sm block" data-cerrar="${esc(t.id)}" style="margin-top:8px">${ic('lock')}Cerrar esta caja</button>`
       : `<div class="kv"><span>Efectivo contado</span><span class="n">${money(t.contado)}</span></div><div class="cuadre">${textoDif(o.diferencia)}</div>`}
     <button class="btn ghost sm block" data-horas="${esc(t.id)}" style="margin-top:6px">${ic('edit')}Corregir horario</button>
@@ -2990,6 +3110,9 @@ function renderDiario(){
       <div class="kv"><span>Deuna</span><span class="n">${money(so.deuna)}</span></div><div class="kv b"><span>Total</span><span class="n">${money(so.total)}</span></div></div>` : ''))
     || '<div class="card empty">No hubo turnos ni ventas este día</div>';
   $('#r-cierre').innerHTML = tablaVendedoras(vs);
+  const mf = movsFuerte().filter(m => m.fecha === f);
+  $('#r-fuerte').innerHTML = `<div class="kv b"><span>Debería haber ahora</span><span class="n">${money(saldoFuerte())}</span></div>`
+    + (mf.map(filaMov).join('') || '<div class="muted small">Sin movimientos este día</div>');
   $('#r-prod').innerHTML = topProductos(vs, 20);
   const dig = vs.filter(v => v.pago && v.pago !== 'efectivo'), conFoto = dig.filter(v => v.comprobante && v.comprobante !== 'error');
   $('#r-comp-info').textContent = dig.length
@@ -3001,6 +3124,7 @@ function renderDiario(){
     `TOTAL DEL DÍA (${tot.n} ventas)`, lineaPagos(tot)].join('\n');
 }
 $('#btn-ver-fotos').onclick = () => verComprobantesDelDia($('#r-fecha').value);
+$('#btn-fuerte-r').onclick = abrirFuerte;
 $('#r-turnos').addEventListener('click', e => {
   const h = e.target.closest('[data-horas]');
   if (h) { const t = db.turnos.find(x => x.id === h.dataset.horas); if (t) abrirHoras(t); return; }
@@ -3082,6 +3206,11 @@ function barras(items, { texto, orden = true, resaltar = true } = {}){
 }
 function alertasDelMes(m, vs){
   const al = [], icono = n => `<span class="al-ic">${ic(n)}</span>`;
+  const borr = (db.avisos || []).filter(a => a.tipo === 'venta-borrada' && a.rol !== 'admin' && (a.fecha || '').startsWith(m));
+  if (borr.length) {
+    const pq = {}; borr.forEach(a => pq[a.quien] = (pq[a.quien] || 0) + 1);
+    al.push(`${icono('trash')}<div><b>${borr.length} venta(s) borrada(s) por vendedoras</b> este mes (${Object.entries(pq).map(([n, c]) => `${esc(n)}: ${c}`).join(', ')}). <a href="#" data-notif>Ver notificaciones</a></div>`);
+  }
   // 1) Vendedoras que rinden menos: promedio por día trabajado contra el promedio del equipo
   const pv = {};
   vs.forEach(v => { const o = pv[v.vendedora || '-'] ||= { t: 0, dias: new Set() }; o.t += v.total; o.dias.add(v.fecha); });
@@ -3119,6 +3248,7 @@ function renderResumen(){
     <div class="kpi"><small>Promedio por día</small><b class="n">${money(dias ? tot / dias : 0)}</b></div>
     <div class="kpi"><small>Venta promedio</small><b class="n">${money(vs.length ? tot / vs.length : 0)}</b></div>`;
   const al = alertasDelMes(m, vs);
+  $('#d-alertas').onclick = e => { if (e.target.closest('[data-notif]')) { e.preventDefault(); abrirNotificaciones(); } };
   $('#d-alertas').innerHTML = al.length ? al.map(a => `<div class="alerta">${a}</div>`).join('') : '<div class="muted small">Todo en orden: no hay alertas este mes.</div>';
   // Quién vendió más
   const pv = {};
@@ -3159,6 +3289,104 @@ $('#btn-csv-mes').onclick = () => {
   descargar(aCSV(rows), `reporte_${m}.csv`, 'text/csv');
 };
 
+/* ================= Caja fuerte: préstamos a la caja y devoluciones ================= */
+const MOV_FUERTE = { 'a-caja': 'Sacó de la caja fuerte para la caja', 'a-fuerte': 'Devolvió a la caja fuerte', deposito: 'Guardó dinero en la caja fuerte', retiro: 'Sacó dinero de la caja fuerte' };
+const movsFuerte = () => (db.movimientos || []).filter(m => m.tipo === 'fuerte');
+/** Lo que hay en la caja fuerte según lo registrado */
+const saldoFuerte = () => r2(movsFuerte().reduce((a, m) => a + (m.mov === 'deposito' || m.mov === 'a-fuerte' ? m.monto : -m.monto), 0));
+const filaMov = m => `<div class="mov"><span>${esc(MOV_FUERTE[m.mov] || m.mov)}<small>${m.hora || ''} · ${esc(m.quien || '')}${m.nota ? ' · ' + esc(m.nota) : ''}</small></span><b class="n">${m.mov === 'deposito' || m.mov === 'a-fuerte' ? '+' : '-'}${money(m.monto)}</b></div>`;
+let movFuerte = 'a-caja';
+/** La caja a la que afecta: la propia; un administrador sin caja usa la caja abierta de hoy */
+const cajaParaFuerte = () => turno || (esAdmin() ? db.turnos.find(x => !x.cierra && x.fecha === hoy()) : null);
+function abrirFuerte(){
+  if (!usuario) return;
+  movFuerte = 'a-caja'; $('#f-monto').value = ''; $('#f-nota').value = '';
+  pintarFuerte(); $('#dlg-fuerte').showModal();
+}
+function pintarFuerte(){
+  $('#f-tipo').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === movFuerte));
+  const t = cajaParaFuerte(), o = t ? resumenTurno(t) : null;
+  $('#f-info').innerHTML = [
+    esAdmin() ? `En la caja fuerte debería haber <b>${money(saldoFuerte())}</b>` : '',
+    t ? `Caja de ${esc(t.vendedora)}: debe haber ${money(o.esperado)}${o.prestamoPend ? ` · falta devolver ${money(o.prestamoPend)} a la caja fuerte` : ''}` : 'No hay una caja abierta: abra una caja para registrar préstamos.'
+  ].filter(Boolean).join('<br>');
+  $('#f-nota').placeholder = movFuerte === 'retiro' ? 'Obligatorio: para qué se sacó' : 'Ej.: sencillo para vuelto';
+  const hoyM = movsFuerte().filter(m => m.fecha === hoy()).slice().reverse();
+  $('#f-lista').innerHTML = hoyM.map(filaMov).join('') || '<div class="muted small">Sin movimientos hoy</div>';
+}
+$('#f-tipo').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { movFuerte = b.dataset.m; pintarFuerte(); } });
+$('#f-ok').onclick = () => {
+  const monto = r2(parseFloat($('#f-monto').value) || 0), nota = $('#f-nota').value.trim(), mov = movFuerte;
+  if (!(monto > 0)) return toast('Escriba el monto');
+  if ((mov === 'deposito' || mov === 'retiro') && !esAdmin()) return toast('Solo un administrador puede hacer eso');
+  if (mov === 'retiro' && !nota) return toast('Escriba para qué se sacó el dinero');
+  const enCaja = mov === 'a-caja' || mov === 'a-fuerte', t = enCaja ? cajaParaFuerte() : null;
+  if (enCaja && !t) return toast('Primero abra una caja');
+  if (mov === 'a-fuerte' && monto > resumenTurno(t).esperado && !confirm(`En la caja debería haber ${money(resumenTurno(t).esperado)}. ¿Registrar igual ${money(monto)}?`)) return;
+  const m = { id: db.dev + '-F' + Date.now().toString(36), tipo: 'fuerte', mov, monto, pago: 'efectivo', nota, turnoId: t?.id || null,
+              fecha: hoy(), hora: horaAhora(), ts: Date.now(), quien: usuario.nombre, quienId: usuario.id };
+  (db.movimientos ||= []).push(m); save(); encolar('movimiento', m);
+  if (!esAdmin()) crearAviso('caja-fuerte', `${MOV_FUERTE[mov]}: ${money(monto)}`, nota, monto);
+  $('#dlg-fuerte').close(); toast(`${MOV_FUERTE[mov]}: ${money(monto)}`);
+  if (tabActual === 'reportes') renderReportes();
+};
+
+/* ================= Notificaciones para los administradores ================= */
+function crearAviso(tipo, detalle, motivo, monto, extra){
+  const a = { id: db.dev + '-A' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo, detalle, motivo: motivo || '', monto: monto || 0,
+              fecha: hoy(), hora: horaAhora(), ts: Date.now(), quien: usuario?.nombre || '', quienId: usuario?.id || '', rol: usuario?.rol || '', ...(extra || {}) };
+  (db.avisos ||= []).push(a); save(); encolar('aviso', a); pintarCampana();
+}
+const notifLeidas = () => lsGet('fiestaFeliz.notifLeidas', []);
+const notifNuevas = () => { const l = new Set(notifLeidas()); return (db.avisos || []).filter(a => a.quienId !== usuario?.id && !l.has(a.id)); };
+function pintarCampana(){
+  const b = document.getElementById('notif-n'); if (!b) return;
+  const n = esAdmin() ? notifNuevas().length : 0;
+  b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
+}
+const TIT_AVISO = { 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte' };
+function abrirNotificaciones(){
+  const nuevas = new Set(notifNuevas().map(a => a.id));
+  const xs = (db.avisos || []).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 200);
+  let dia = '';
+  $('#notif-b').innerHTML = xs.map(a => {
+    const cab = a.fecha !== dia ? `<h3 class="sec">${fechaLarga(dia = a.fecha)}</h3>` : '';
+    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : 'boveda')}</span><div>
+      <b>${esc(a.quien)} ${TIT_AVISO[a.tipo] || ''}</b> <small>${a.hora || ''}</small>
+      <p>${esc(a.detalle || '')}</p>${a.motivo ? `<p><small>Nota:</small> ${esc(a.motivo)}</p>` : ''}</div></div>`;
+  }).join('') || '<div class="empty">No hay notificaciones.</div>';
+  $('#dlg-notif').showModal();
+  lsSet('fiestaFeliz.notifLeidas', [...new Set([...notifLeidas(), ...(db.avisos || []).map(a => a.id)])].slice(-1000));
+  pintarCampana();
+}
+$('#btn-notif').onclick = abrirNotificaciones;
+
+/* ================= Borrar una venta con nota ================= */
+/** Vendedora: solo sus ventas de la caja que tiene abierta. Administrador: cualquiera. */
+const puedeBorrar = v => esAdmin() || !!(turno && v.turnoId === turno.id && (v.vendedoraId === usuario?.id || (!v.vendedoraId && v.vendedora === usuario?.nombre)));
+let ventaBorrar = null;
+function pedirBorrarVenta(v){
+  ventaBorrar = v;
+  $('#b-tit').textContent = esAdmin() ? 'Anular venta' : 'Borrar venta';
+  $('#b-txt').textContent = `Venta de ${money(v.total)} (${PAGOS[v.pago || 'efectivo']}) a ${v.cliente}, ${v.fecha} ${v.hora || ''}. ${esAdmin() ? 'Quedará registrado quién la anuló.' : 'El administrador recibirá un aviso con su nota.'}`;
+  $('#b-motivo').value = ''; $('#dlg-borrar').showModal(); setTimeout(() => $('#b-motivo').focus(), 50);
+}
+$('#b-ok').onclick = () => {
+  const v = ventaBorrar, motivo = $('#b-motivo').value.trim();
+  if (!v) return;
+  if (motivo.length < 4) return toast('Escriba por qué se borra la venta');
+  if (!puedeBorrar(v)) return toast('Solo puede borrar ventas de su caja abierta');
+  encolar('venta', v, true);
+  db.ventas = db.ventas.filter(x => (x.uid || x.id) !== (v.uid || v.id));
+  crearAviso('venta-borrada', `Venta de ${money(v.total)} · ${PAGOS[v.pago || 'efectivo']} · ${v.cliente} · ${v.fecha} ${v.hora || ''} · ${v.lineas.map(l => `${l.cant} ${l.nombre}`).join(', ')}`, motivo, v.total,
+    { ventaUid: v.uid || v.id, vendedoraVenta: v.vendedora });
+  ventaBorrar = null; save();
+  $('#dlg-borrar').close(); $('#dlg-pre').close(); if ($('#dlg-mias').open) $('#dlg-mias').close();
+  toast(esAdmin() ? 'Venta anulada' : 'Venta borrada. El administrador recibirá el aviso.');
+  if (tabActual === 'historial') renderHistorial();
+  if (tabActual === 'reportes') renderReportes();
+};
+
 /* Mis ventas de hoy (cada usuaria ve lo suyo) */
 $('#btn-mias').onclick = () => {
   if (!usuario) return;
@@ -3175,14 +3403,18 @@ $('#btn-mias').onclick = () => {
       <div class="th"><b>Mi caja</b><span class="estado abierta">Abierta desde ${turno.abre}</span></div>
       <div class="kv"><span>Caja inicial</span><span class="n">${money(turno.cajaInicial)}</span></div>
       <div class="kv"><span>Efectivo vendido</span><span class="n">${money(o2.efectivo)}</span></div>
+      ${lineasFuerte(o2)}
       <div class="kv b"><span>Debe haber en caja</span><span class="n">${money(o2.esperado)}</span></div>
-      <button class="btn pri block" id="btn-cerrar-caja" style="margin-top:10px">${ic('lock')}Cerrar mi caja</button></div>`; })() : ''}
+      ${o2.prestamoPend ? `<div class="cuadre">Falta devolver ${money(o2.prestamoPend)} a la caja fuerte</div>` : ''}
+      <button class="btn soft block" id="btn-fuerte" style="margin-top:10px">${ic('boveda')}Caja fuerte</button>
+      <button class="btn pri block" id="btn-cerrar-caja" style="margin-top:8px">${ic('lock')}Cerrar mi caja</button></div>`; })() : ''}
     ${vs.length ? '<div class="muted small" style="margin-bottom:4px">Toque una venta para ver el detalle</div>' : ''}
     ${vs.slice().reverse().map(v => `<div class="line" data-u="${esc(v.uid || v.id)}" style="cursor:pointer"><div class="ln"><b>${esc(v.cliente)}<span class="ptag">${PAGOS[v.pago || 'efectivo']}</span></b><small>${v.hora || ''} · ${v.lineas.map(l => `${l.cant} ${esc(l.nombre)}`).join(', ')}</small></div><div class="lt n">${money(v.total)}</div><span class="muted">${ic('right')}</span></div>`).join('') || '<div class="empty">Aún no hay ventas hoy</div>'}`;
   $('#dlg-mias').showModal();
 };
 $('#mias-b').addEventListener('click', e => {
   if (e.target.closest('#btn-cerrar-caja')) { $('#dlg-mias').close(); return abrirCierre(turno); }
+  if (e.target.closest('#btn-fuerte')) { $('#dlg-mias').close(); return abrirFuerte(); }
   const l = e.target.closest('[data-u]'); if (!l) return;
   const v = db.ventas.find(x => String(x.uid || x.id) === l.dataset.u); if (v) mostrarPrefactura(v, false);
 });
@@ -3764,7 +3996,7 @@ new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => {
 
 /* ================= Inicio ================= */
 function init(){
-  db.clientes ||= []; db.productos ||= []; db.turnos ||= []; db.movimientos ||= [];
+  db.clientes ||= []; db.productos ||= []; db.turnos ||= []; db.movimientos ||= []; db.avisos ||= [];
   if (!db.usuarios?.length) db.usuarios = USUARIOS_INICIALES();
   db.usuarios.forEach(u => { if (u.nombre === 'Amparito Kaisa') u.nombre = 'Amparito Caiza'; });
   if (db.ventas.some(v => v.demo) && db.demoV !== 2) quitarDemo();      // ejemplo anterior -> se regenera
