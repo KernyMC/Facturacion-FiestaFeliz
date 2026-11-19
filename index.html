@@ -513,6 +513,11 @@
         <button class="btn soft block" id="btn-fuerte-r" style="margin-top:10px"><span data-ic="boveda"></span>Registrar movimiento</button>
       </div>
       <div class="card">
+        <h2>Egresos del día</h2>
+        <div id="r-egresos"></div>
+        <button class="btn soft block" id="btn-egreso-r" style="margin-top:10px"><span data-ic="bajada"></span>Registrar egreso</button>
+      </div>
+      <div class="card">
         <h2>Caja chica y préstamos</h2>
         <div id="r-chica"></div>
         <button class="btn soft block" id="btn-chica-r" style="margin-top:10px"><span data-ic="cash"></span>Registrar préstamo o pago</button>
@@ -1102,6 +1107,23 @@
   <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ch-ok"><span data-ic="check"></span>Registrar</button></div>
 </dialog>
 
+<!-- Egresos: pagos hechos con el dinero del local -->
+<dialog id="dlg-egreso">
+  <div class="sh-h"><h3>Registrar egreso</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b">
+    <div class="fld"><span class="lbl">¿Qué se pagó?</span><input id="eg-concepto" maxlength="80" placeholder="Ej.: fundas, transporte, agua" autocomplete="off"></div>
+    <span class="lbl">Tipo de gasto</span>
+    <div class="pay desc" id="eg-cat"></div>
+    <div class="fld" style="margin-top:10px"><span class="lbl">Monto</span><input id="eg-monto" class="money"></div>
+    <span class="lbl">¿De dónde salió el dinero?</span>
+    <div class="pay desc" id="eg-origen"><button data-o="caja">Caja de ventas</button><button data-o="chica">Caja chica</button></div>
+    <div class="fld" style="margin-top:10px"><span class="lbl">Nota</span><input id="eg-nota" maxlength="120" placeholder="Opcional: a quién se pagó, factura, etc."></div>
+    <h3 class="sec" style="margin-top:16px">Egresos de hoy</h3>
+    <div id="eg-lista"></div>
+  </div>
+  <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="eg-ok"><span data-ic="check"></span>Registrar</button></div>
+</dialog>
+
 <!-- Borrar una venta (con nota) -->
 <dialog id="dlg-borrar">
   <div class="sh-h"><h3 id="b-tit">Borrar venta</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
@@ -1492,7 +1514,9 @@ function resumenTurno(t){
   // Préstamos de la caja chica pagados o recibidos con el efectivo de la caja de ventas
   o.chicaIn = 0; o.chicaOut = 0;
   (db.movimientos || []).forEach(m => { if (m.tipo !== 'chica' || m.turnoId !== t.id || m.origen !== 'caja') return; if (ENTRA_CHICA.has(m.mov)) o.chicaIn = r2(o.chicaIn + m.monto); else o.chicaOut = r2(o.chicaOut + m.monto); });
-  o.esperado = r2((t.cajaInicial || 0) + o.efectivo + o.garRec - o.garDev + o.fuerteIn - o.fuerteOut + o.chicaIn - o.chicaOut);
+  // Egresos pagados con el efectivo de la caja de ventas
+  o.egresos = r2((db.movimientos || []).filter(m => m.tipo === 'egreso' && m.turnoId === t.id && m.origen === 'caja').reduce((a, m) => a + m.monto, 0));
+  o.esperado = r2((t.cajaInicial || 0) + o.efectivo + o.garRec - o.garDev + o.fuerteIn - o.fuerteOut + o.chicaIn - o.chicaOut - o.egresos);
   o.diferencia = t.contado == null ? null : r2(t.contado - o.esperado);
   return o;
 }
@@ -1539,7 +1563,8 @@ function listaPorPago(t){
 const lineasFuerte = o => (o.fuerteIn ? `<div class="kv"><span>Sacado de la caja fuerte</span><span class="n">+${money(o.fuerteIn)}</span></div>` : '')
   + (o.fuerteOut ? `<div class="kv"><span>Devuelto a la caja fuerte</span><span class="n">-${money(o.fuerteOut)}</span></div>` : '')
   + (o.chicaIn ? `<div class="kv"><span>Préstamos que entraron a la caja</span><span class="n">+${money(o.chicaIn)}</span></div>` : '')
-  + (o.chicaOut ? `<div class="kv"><span>Préstamos pagados con la caja</span><span class="n">-${money(o.chicaOut)}</span></div>` : '');
+  + (o.chicaOut ? `<div class="kv"><span>Préstamos pagados con la caja</span><span class="n">-${money(o.chicaOut)}</span></div>` : '')
+  + (o.egresos ? `<div class="kv"><span>Egresos pagados con la caja</span><span class="n">-${money(o.egresos)}</span></div>` : '');
 function abrirCierre(t, forzado){
   turnoCierre = t; cierreForzado = forzado || false;
   const o = resumenTurno(t);
@@ -1597,7 +1622,8 @@ function mostrarCajaCerrada(t, o, despues){
     `Quedó en caja (contado): ${money(t.contado)}`, `Debía haber: ${money(o.esperado)} · ${textoDif(o.diferencia)}`, '',
     `Efectivo: ${money(o.efectivo)}`, `Transferencias (${nT}): ${money(o.transferencia)}`, `Deuna (${nD}): ${money(o.deuna)}`, `Total vendido: ${money(o.total)}`,
     ...(o.fuerteIn || o.fuerteOut ? [`Caja fuerte: sacado ${money(o.fuerteIn)} · devuelto ${money(o.fuerteOut)}`] : []),
-    ...(o.chicaIn || o.chicaOut ? [`Préstamos con la caja: entró ${money(o.chicaIn)} · salió ${money(o.chicaOut)}`] : [])].join('\n');
+    ...(o.chicaIn || o.chicaOut ? [`Préstamos con la caja: entró ${money(o.chicaIn)} · salió ${money(o.chicaOut)}`] : []),
+    ...(o.egresos ? [`Egresos pagados con la caja: ${money(o.egresos)}`] : [])].join('\n');
   $('#dlg-cierre-ok').showModal();
 }
 $('#dlg-cierre-ok').addEventListener('cancel', e => e.preventDefault());
@@ -2193,7 +2219,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '25'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '26'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -3159,6 +3185,11 @@ function renderDiario(){
   const mf = movsFuerte().filter(m => m.fecha === f);
   $('#r-fuerte').innerHTML = `<div class="kv b"><span>Debería haber ahora</span><span class="n">${money(saldoFuerte())}</span></div>`
     + (mf.map(filaMov).join('') || '<div class="muted small">Sin movimientos este día</div>');
+  const me = movsEgreso().filter(m => m.fecha === f);
+  $('#r-egresos').innerHTML = me.length ? me.map(m => `<div style="position:relative">${filaEgreso(m)}</div><button class="btn ghost sm" data-borrar-eg="${esc(m.id)}" style="margin:-4px 0 6px">${ic('trash')}Borrar</button>`).join('')
+      + `<div class="kv b"><span>Total egresos</span><span class="n">${money(me.reduce((a, m) => a + m.monto, 0))}</span></div>`
+      + `<div class="kv"><span>Vendido menos egresos</span><span class="n">${money(tot.total - me.reduce((a, m) => a + m.monto, 0))}</span></div>`
+    : '<div class="muted small">Sin egresos este día</div>';
   const ds = deudasChica(), mc = movsChica().filter(m => m.fecha === f);
   $('#r-chica').innerHTML = `<div class="kv b"><span>En la caja chica debería haber</span><span class="n">${money(saldoChica())}</span></div>`
     + ds.filter(o => o.nosDebe > 0).map(o => `<div class="kv"><span>${esc(o.nombre)} nos debe</span><span class="n">${money(o.nosDebe)}</span></div>`).join('')
@@ -3172,11 +3203,14 @@ function renderDiario(){
   textoDia = [`CIERRE DIARIO - FIESTA FELIZ`, fechaLarga(f), '',
     ...ts.map(t => { const o = resumenTurno(t); return `${t.vendedora} (${t.abre} a ${t.cierra || 'abierta'} · ${fmtHoras(msTrabajados(t))})\nCaja inicial ${money(t.cajaInicial)} | ${lineaPagos(o)}\nDebe haber ${money(o.esperado)}${t.contado != null ? ` | Contado ${money(t.contado)} | ${textoDif(o.diferencia)}` : ''}\n`; }),
     ...(sueltas.length ? [`Sin turno: ${lineaPagos(so)}\n`] : []),
-    `TOTAL DEL DÍA (${tot.n} ventas)`, lineaPagos(tot)].join('\n');
+    `TOTAL DEL DÍA (${tot.n} ventas)`, lineaPagos(tot),
+    ...(me.length ? ['', `EGRESOS: ${money(me.reduce((a, m) => a + m.monto, 0))}`, ...me.map(m => `- ${m.concepto} (${m.categoria}): ${money(m.monto)}`)] : [])].join('\n');
 }
 $('#btn-ver-fotos').onclick = () => verComprobantesDelDia($('#r-fecha').value);
 $('#btn-fuerte-r').onclick = abrirFuerte;
 $('#btn-chica-r').onclick = abrirChica;
+$('#btn-egreso-r').onclick = abrirEgreso;
+$('#r-egresos').addEventListener('click', e => { const b = e.target.closest('[data-borrar-eg]'); if (b) borrarEgreso(b.dataset.borrarEg); });
 $('#r-turnos').addEventListener('click', e => {
   const h = e.target.closest('[data-horas]');
   if (h) { const t = db.turnos.find(x => x.id === h.dataset.horas); if (t) abrirHoras(t); return; }
@@ -3301,7 +3335,9 @@ function renderResumen(){
     <div class="kpi"><small>Venta promedio</small><b class="n">${money(vs.length ? tot / vs.length : 0)}</b></div>
     ${(() => { const mp = sumaPagos(); vs.forEach(v => acumular(mp, v)); return `<div class="kpi"><small>Efectivo</small><b class="n">${money(mp.efectivo)}</b></div>
     <div class="kpi"><small>Transferencia bancaria</small><b class="n">${money(mp.transferencia)}</b></div>
-    <div class="kpi"><small>Deuna</small><b class="n">${money(mp.deuna)}</b></div>`; })()}`;
+    <div class="kpi"><small>Deuna</small><b class="n">${money(mp.deuna)}</b></div>`; })()}
+    ${(() => { const eg = movsEgreso().filter(x => (x.fecha || '').startsWith(m)).reduce((a, x) => a + x.monto, 0); return `<div class="kpi"><small>Egresos del mes</small><b class="n">${money(eg)}</b></div>
+    <div class="kpi"><small>Vendido menos egresos</small><b class="n">${money(tot - eg)}</b></div>`; })()}`;
   const al = alertasDelMes(m, vs);
   $('#d-alertas').onclick = e => { if (e.target.closest('[data-notif]')) { e.preventDefault(); abrirNotificaciones(); } };
   $('#d-alertas').innerHTML = al.length ? al.map(a => `<div class="alerta">${a}</div>`).join('') : '<div class="muted small">Todo en orden: no hay alertas este mes.</div>';
@@ -3392,7 +3428,8 @@ const ENTRA_CHICA = new Set(['cobro', 'recibo', 'deposito']);
 const CON_PERSONA = new Set(['presto', 'cobro', 'recibo', 'pago']);
 const movsChica = () => (db.movimientos || []).filter(m => m.tipo === 'chica');
 /** Lo que debería haber en la caja chica (sin contar lo que se movió con la caja de ventas) */
-const saldoChica = () => r2(movsChica().filter(m => m.origen !== 'caja').reduce((a, m) => a + (ENTRA_CHICA.has(m.mov) ? m.monto : -m.monto), 0));
+const saldoChica = () => r2(movsChica().filter(m => m.origen !== 'caja').reduce((a, m) => a + (ENTRA_CHICA.has(m.mov) ? m.monto : -m.monto), 0)
+  - movsEgreso().filter(m => m.origen === 'chica').reduce((a, m) => a + m.monto, 0));
 /** Quién nos debe y a quién le debemos */
 function deudasChica(){
   const p = {};
@@ -3458,6 +3495,50 @@ $('#ch-ok').onclick = () => {
   if (tabActual === 'reportes') renderReportes();
 };
 
+/* ================= Egresos: pagos con el dinero del local ================= */
+const CAT_EGRESO = ['Mercadería', 'Servicios', 'Transporte', 'Comida', 'Limpieza', 'Otros'];
+const movsEgreso = () => (db.movimientos || []).filter(m => m.tipo === 'egreso');
+const filaEgreso = m => `<div class="mov"><span>${esc(m.concepto)} <span class="ptag">${esc(m.categoria || 'Otros')}</span><small>${m.fecha === hoy() ? '' : m.fecha + ' '}${m.hora || ''} · ${esc(m.quien || '')} · ${m.origen === 'chica' ? 'caja chica' : 'caja de ventas'}${m.nota ? ' · ' + esc(m.nota) : ''}</small></span><b class="n">-${money(m.monto)}</b></div>`;
+let catEgreso = 'Otros', origenEgreso = 'caja';
+$('#eg-cat').innerHTML = CAT_EGRESO.map(c => `<button data-c="${c}">${c}</button>`).join('');
+function abrirEgreso(){
+  if (!usuario) return;
+  catEgreso = 'Otros'; origenEgreso = cajaParaFuerte() ? 'caja' : 'chica';
+  ['#eg-concepto', '#eg-monto', '#eg-nota'].forEach(x => $(x).value = '');
+  pintarEgreso(); $('#dlg-egreso').showModal(); setTimeout(() => $('#eg-concepto').focus(), 50);
+}
+function pintarEgreso(){
+  $('#eg-cat').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.c === catEgreso));
+  $('#eg-origen').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.o === origenEgreso));
+  const hoyE = movsEgreso().filter(m => m.fecha === hoy());
+  $('#eg-lista').innerHTML = hoyE.length ? hoyE.slice().reverse().map(filaEgreso).join('') + `<div class="kv b"><span>Total de hoy</span><span class="n">${money(hoyE.reduce((a, m) => a + m.monto, 0))}</span></div>`
+    : '<div class="muted small">Sin egresos hoy</div>';
+}
+$('#eg-cat').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { catEgreso = b.dataset.c; pintarEgreso(); } });
+$('#eg-origen').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { origenEgreso = b.dataset.o; pintarEgreso(); } });
+$('#eg-ok').onclick = () => {
+  const concepto = cap($('#eg-concepto').value.trim()), monto = r2(parseFloat($('#eg-monto').value) || 0), nota = $('#eg-nota').value.trim();
+  if (!concepto) return toast('Escriba qué se pagó');
+  if (!(monto > 0)) return toast('Escriba el monto');
+  const t = origenEgreso === 'caja' ? cajaParaFuerte() : null;
+  if (origenEgreso === 'caja' && !t) return toast('No hay una caja de ventas abierta: elija Caja chica');
+  if (t && monto > resumenTurno(t).esperado && !confirm(`En la caja debería haber ${money(resumenTurno(t).esperado)}. ¿Registrar igual ${money(monto)}?`)) return;
+  if (origenEgreso === 'chica' && monto > saldoChica() && !confirm(`En la caja chica debería haber ${money(saldoChica())}. ¿Registrar igual ${money(monto)}?`)) return;
+  const m = { id: db.dev + '-E' + Date.now().toString(36), tipo: 'egreso', concepto, categoria: catEgreso, monto, origen: origenEgreso, pago: 'efectivo', nota, turnoId: t?.id || null,
+              fecha: hoy(), hora: horaAhora(), ts: Date.now(), quien: usuario.nombre, quienId: usuario.id };
+  (db.movimientos ||= []).push(m); save(); encolar('movimiento', m);
+  if (!esAdmin()) crearAviso('egreso', `${concepto} (${catEgreso}): ${money(monto)} · ${origenEgreso === 'chica' ? 'caja chica' : 'caja de ventas'}`, nota, monto);
+  $('#dlg-egreso').close(); toast(`Egreso registrado: ${money(monto)}`);
+  if (tabActual === 'reportes') renderReportes();
+};
+/** El administrador puede borrar un egreso mal registrado */
+function borrarEgreso(id){
+  const m = movsEgreso().find(x => x.id === id); if (!m || !esAdmin()) return;
+  if (!confirm(`¿Borrar el egreso "${m.concepto}" de ${money(m.monto)}?`)) return;
+  db.movimientos = db.movimientos.filter(x => x.id !== id); save(); encolar('movimiento', m, true);
+  toast('Egreso borrado'); renderReportes();
+}
+
 /* ================= Notificaciones para los administradores ================= */
 function crearAviso(tipo, detalle, motivo, monto, extra){
   const a = { id: db.dev + '-A' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo, detalle, motivo: motivo || '', monto: monto || 0,
@@ -3471,14 +3552,14 @@ function pintarCampana(){
   const n = esAdmin() ? notifNuevas().length : 0;
   b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
 }
-const TIT_AVISO = { 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte', 'caja-chica': 'registró un préstamo (caja chica)' };
+const TIT_AVISO = { egreso: 'registró un egreso', 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte', 'caja-chica': 'registró un préstamo (caja chica)' };
 function abrirNotificaciones(){
   const nuevas = new Set(notifNuevas().map(a => a.id));
   const xs = (db.avisos || []).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 200);
   let dia = '';
   $('#notif-b').innerHTML = xs.map(a => {
     const cab = a.fecha !== dia ? `<h3 class="sec">${fechaLarga(dia = a.fecha)}</h3>` : '';
-    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : a.tipo === 'caja-chica' ? 'cash' : 'boveda')}</span><div>
+    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : a.tipo === 'caja-chica' ? 'cash' : a.tipo === 'egreso' ? 'bajada' : 'boveda')}</span><div>
       <b>${esc(a.quien)} ${TIT_AVISO[a.tipo] || ''}</b> <small>${a.hora || ''}</small>
       <p>${esc(a.detalle || '')}</p>${a.motivo ? `<p><small>Nota:</small> ${esc(a.motivo)}</p>` : ''}</div></div>`;
   }).join('') || '<div class="empty">No hay notificaciones.</div>';
@@ -3534,6 +3615,7 @@ $('#btn-mias').onclick = () => {
       <div class="kv b"><span>Debe haber en caja</span><span class="n">${money(o2.esperado)}</span></div>
       ${o2.prestamoPend ? `<div class="cuadre">Falta devolver ${money(o2.prestamoPend)} a la caja fuerte</div>` : ''}
       <div class="row" style="margin-top:10px"><button class="btn soft" id="btn-fuerte">${ic('boveda')}Caja fuerte</button><button class="btn soft" id="btn-chica">${ic('cash')}Caja chica</button></div>
+      <button class="btn soft block" id="btn-egreso" style="margin-top:8px">${ic('bajada')}Registrar egreso (pago con la caja)</button>
       <button class="btn pri block" id="btn-cerrar-caja" style="margin-top:8px">${ic('lock')}Cerrar mi caja</button></div>`; })() : ''}
     ${vs.length ? '<div class="muted small" style="margin-bottom:4px">Toque una venta para ver el detalle</div>' : ''}
     ${vs.slice().reverse().map(v => `<div class="line" data-u="${esc(v.uid || v.id)}" style="cursor:pointer"><div class="ln"><b>${esc(v.cliente)}<span class="ptag">${PAGOS[v.pago || 'efectivo']}</span></b><small>${v.hora || ''} · ${v.lineas.map(l => `${l.cant} ${esc(l.nombre)}`).join(', ')}</small></div><div class="lt n">${money(v.total)}</div><span class="muted">${ic('right')}</span></div>`).join('') || '<div class="empty">Aún no hay ventas hoy</div>'}`;
@@ -3543,6 +3625,7 @@ $('#mias-b').addEventListener('click', e => {
   if (e.target.closest('#btn-cerrar-caja')) { $('#dlg-mias').close(); return abrirCierre(turno); }
   if (e.target.closest('#btn-fuerte')) { $('#dlg-mias').close(); return abrirFuerte(); }
   if (e.target.closest('#btn-chica')) { $('#dlg-mias').close(); return abrirChica(); }
+  if (e.target.closest('#btn-egreso')) { $('#dlg-mias').close(); return abrirEgreso(); }
   const l = e.target.closest('[data-u]'); if (!l) return;
   const v = db.ventas.find(x => String(x.uid || x.id) === l.dataset.u); if (v) mostrarPrefactura(v, false);
 });
