@@ -74,6 +74,19 @@ module.exports = function crearSync({ json, leerCuerpo, igual }) {
         json(res, 200, { registros: r.rows, telefonos: t.rows }); return true;
       }
 
+      // Empezar de cero (administrador): borra ventas, turnos, movimientos y avisos de todos los teléfonos.
+      // Productos, usuarios y ajustes se conservan. Se marcan como borrados para que cada teléfono los quite.
+      if (req.method === 'POST' && ruta === '/api/sync/vaciar') {
+        if (!esAdmin) { json(res, 401, { error: 'solo el administrador' }); return true; }
+        const permitidos = ['venta', 'turno', 'movimiento', 'aviso', 'cliente'];
+        const pedidos = (await cuerpo()).tipos, tipos = Array.isArray(pedidos) ? pedidos.filter(x => permitidos.includes(x)) : [];
+        if (!tipos.length) { json(res, 400, { error: 'faltan los tipos' }); return true; }
+        const r = await pool.query(`UPDATE registros SET borrado = true, data = '{}'::jsonb, version = nextval('registros_version'), actualizado = now()
+          WHERE tipo = ANY($1) AND NOT borrado RETURNING tipo`, [tipos]);
+        const n = {}; r.rows.forEach(x => { n[x.tipo] = (n[x.tipo] || 0) + 1; });
+        json(res, 200, { borrados: n }); return true;
+      }
+
       // Sincronizar: recibe cambios del teléfono y le devuelve lo nuevo de todos
       if (req.method === 'POST' && ruta === '/api/sync') {
         const disp = dispositivoDe(req);
