@@ -330,8 +330,33 @@
   .logo-deuna{height:20px;width:auto}
   .pay button.on .logo-deuna{filter:none}
   .foto-btn{display:flex;align-items:center;justify-content:center;gap:8px;height:56px;border:1.5px dashed var(--c);border-radius:12px;color:var(--c);font-weight:600;cursor:pointer;background:var(--cl)}
-  .foto-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .foto-btns .foto-btn{height:52px;font-size:15px}
+  /* Cámara propia (como WhatsApp): vista en vivo, disparador y acceso a la galería */
+  #dlg-fpick{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border-radius:0;background:#000;color:#fff;overflow:hidden}
+  #dlg-fpick::backdrop{background:#000}
+  #fp-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+  .fp-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;background:rgba(0,0,0,.35);font-weight:700}
+  .fp-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-between;padding:18px 32px calc(26px + env(safe-area-inset-bottom));background:rgba(0,0,0,.35)}
+  .fp-side{width:54px;height:54px;border-radius:14px;border:0;background:rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-direction:column;font-size:11px;gap:2px}
+  .fp-side.vacio{visibility:hidden}
+  .fp-disp{width:78px;height:78px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.22);cursor:pointer;padding:0}
+  .fp-disp:active{background:#fff}
+  .fp-x{width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .fp-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
+  .fp-msg[hidden]{display:none}
+  .fp-msg .btn{background:#fff;color:var(--c);border-color:#fff}
+  #dlg-fpick.grid .fp-cam-ui,#dlg-fpick:not(.grid) .fp-grid-ui{display:none !important}
+  .fp-grid-ui{position:absolute;inset:0;display:flex;flex-direction:column;background:#000}
+  .fp-cab{display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 16px 14px;font-weight:700;font-size:18px}
+  .fp-cab .fp-x{background:transparent}
+  .fp-rec{padding:4px 16px 10px;font-weight:700;font-size:17px}
+  .fp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+  .fp-tile{position:relative;aspect-ratio:3/4;border:0;padding:0;margin:0;background:#1f2023;color:#fff;cursor:pointer;overflow:hidden;display:block;font:inherit}
+  .fp-tile video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55}
+  .fp-tile .fp-c{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%)}
+  .fp-tile .fp-c svg.i{width:30px;height:30px}
+  .fp-tile .fp-l{position:absolute;left:12px;bottom:12px;font-weight:600;font-size:14px}
+  .fp-tile.vacio{cursor:default}
+  .fp-nota{color:rgba(255,255,255,.65);font-size:13px;padding:14px 16px;margin:0}
   #fprev-img{width:100%;max-height:60vh;object-fit:contain;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
   .foto-prev{position:relative;margin-top:10px}
   .foto-prev img{width:100%;max-height:220px;object-fit:contain;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
@@ -822,10 +847,7 @@
     <div id="digital-box" hidden>
       <div class="fld" id="banco-fld"><span class="lbl">Banco de origen</span><select id="pago-banco"></select></div>
       <span class="lbl">Foto del comprobante</span>
-      <div class="foto-btns">
-        <label class="foto-btn"><span data-ic="camera"></span><span>Tomar foto</span><input type="file" id="foto-cam" accept="image/*" capture="environment" hidden></label>
-        <label class="foto-btn"><span data-ic="image"></span><span>Galería</span><input type="file" id="foto-gal" accept="image/*" hidden></label>
-      </div>
+      <button type="button" class="foto-btn" id="foto-abrir" style="width:100%"><span data-ic="camera"></span><span>Foto del comprobante</span></button>
       <div id="foto-prev"></div>
     </div>
   </div>
@@ -1009,6 +1031,38 @@
   <div class="sh-b"><iframe id="alc-frame" sandbox="" title="Contrato firmado" class="contrato-frame" style="height:70vh"></iframe></div>
 </dialog>
 
+<!-- Cámara: vista en vivo; abajo a la izquierda la galería -->
+<dialog id="dlg-fpick" class="grid">
+  <!-- Cuadrícula: primero la cámara, luego la galería -->
+  <div class="fp-grid-ui">
+    <div class="fp-cab"><button class="fp-x" id="fp-salir" aria-label="Cerrar" data-ic="x"></button><span id="fp-tit">Foto</span><span style="width:40px"></span></div>
+    <div class="fp-rec">Elegir foto</div>
+    <div class="fp-grid">
+      <button class="fp-tile" id="fp-t-cam"><video id="fp-mini" playsinline muted autoplay></video><span class="fp-c" data-ic="camera"></span><span class="fp-l">Cámara</span></button>
+      <label class="fp-tile" for="fp-gal"><span class="fp-c" data-ic="image"></span><span class="fp-l">Galería</span></label>
+      <span class="fp-tile vacio"></span><span class="fp-tile vacio"></span><span class="fp-tile vacio"></span><span class="fp-tile vacio"></span>
+    </div>
+    <p class="fp-nota">Toque <b>Cámara</b> para tomar la foto ahora, o <b>Galería</b> para elegir una captura o foto guardada en el teléfono.</p>
+  </div>
+  <!-- Cámara en pantalla completa -->
+  <div class="fp-cam-ui">
+    <video id="fp-video" playsinline muted autoplay></video>
+    <div class="fp-msg" id="fp-msg" hidden>
+      <span data-ic="camera"></span>
+      <div id="fp-msg-txt">No se pudo abrir la cámara.</div>
+      <button class="btn" id="fp-sistema">Abrir la cámara del teléfono</button>
+    </div>
+    <div class="fp-top"><button class="fp-x" id="fp-cerrar" aria-label="Volver" data-ic="x"></button><span id="fp-tit2">Cámara</span><span style="width:40px"></span></div>
+    <div class="fp-bar">
+      <label class="fp-side" for="fp-gal" aria-label="Galería"><span data-ic="image"></span>Galería</label>
+      <button class="fp-disp" id="fp-disp" aria-label="Tomar foto"></button>
+      <span class="fp-side vacio"></span>
+    </div>
+  </div>
+  <input type="file" id="fp-gal" accept="image/*" hidden>
+  <input type="file" id="fp-cam-in" accept="image/*" capture="environment" hidden>
+</dialog>
+
 <!-- Vista previa de una foto antes de usarla -->
 <dialog id="dlg-fprev">
   <div class="sh-h"><h3>¿Se ve bien la foto?</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
@@ -1024,10 +1078,7 @@
   <div class="sh-h"><h3 id="ald2-tit">Disfraz</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
   <div class="sh-b">
     <div class="alf-foto" id="alf-foto"></div>
-    <div class="foto-btns" style="margin-bottom:12px">
-      <label class="foto-btn"><span data-ic="camera"></span><span>Tomar foto</span><input type="file" id="alf-foto-cam" accept="image/*" capture="environment" hidden></label>
-      <label class="foto-btn"><span data-ic="image"></span><span>Galería</span><input type="file" id="alf-foto-gal" accept="image/*" hidden></label>
-    </div>
+    <button type="button" class="foto-btn" id="alf-foto-abrir" style="width:100%;margin-bottom:12px"><span data-ic="camera"></span><span>Cambiar foto</span></button>
     <div class="fld"><span class="lbl">Nombre</span><input id="alf-nombre" placeholder="Ej: Dinosaurio naranja #3"></div>
     <div class="fld"><span class="lbl">Estado</span><select id="alf-estado"><option value="disponible">Disponible</option><option value="reparacion">En reparación</option></select></div>
     <label class="sw-row"><span><b>Incluye ventilador</b></span><input type="checkbox" id="alf-vent" class="sw"></label>
@@ -2198,24 +2249,70 @@ function pintarFoto(){
 }
 /* Fotos: "Tomar foto" abre la cámara y "Galería" las fotos guardadas. Antes de usarla se ve en grande
    y se puede repetir si salió mal. */
-let fprev = null;
-function prepararFoto(input, comprimir, alUsar, ayuda){
-  input.addEventListener('click', () => permitirSalida());
-  input.addEventListener('change', async e => {
-    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-    try {
-      const d = await comprimir(f), cam = input.hasAttribute('capture');
-      fprev = { d, input, alUsar };
-      $('#fprev-img').src = d; $('#fprev-txt').textContent = ayuda || '';
-      $('#fprev-rep').innerHTML = ic(cam ? 'camera' : 'image') + (cam ? 'Repetir foto' : 'Elegir otra');
-      if (!$('#dlg-fprev').open) $('#dlg-fprev').showModal();
-    } catch { toast('No se pudo leer la foto'); }
-  });
+/* Foto como en WhatsApp: un solo botón abre la cámara en vivo; se toma con el botón redondo o se elige
+   de la galería (abajo a la izquierda). Antes de usarla se ve en grande y se puede repetir. */
+let fpConf = null, fpStream = null, fprev = null, fpSinCam = false;
+function abrirSelectorFoto(conf){
+  fpConf = conf; $('#fp-tit').textContent = conf.titulo || 'Foto';
+  $('#fp-msg').hidden = true; $('#fp-disp').hidden = false; fpSinCam = false;
+  $('#dlg-fpick').classList.add('grid');
+  if (!$('#dlg-fpick').open) $('#dlg-fpick').showModal();
+  iniciarCamara();
 }
-$('#fprev-rep').onclick = () => { const i = fprev?.input; fprev = null; $('#dlg-fprev').close(); if (i) i.click(); };
-$('#fprev-ok').onclick = () => { const f = fprev; fprev = null; $('#dlg-fprev').close(); if (f) f.alUsar(f.d); };
+// Recuadro "Cámara": abre la cámara en pantalla completa (o la del teléfono si la de la app no abre)
+$('#fp-t-cam').onclick = () => {
+  if (fpSinCam) return $('#fp-cam-in').click();
+  $('#dlg-fpick').classList.remove('grid'); $('#fp-video').play().catch(() => {});
+};
+$('#fp-salir').onclick = () => $('#dlg-fpick').close();
+async function iniciarCamara(){
+  pararCamara();
+  if (!navigator.mediaDevices?.getUserMedia) return sinCamara('Este teléfono no deja abrir la cámara aquí.');
+  try {
+    fpStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    if (!$('#dlg-fpick').open) return pararCamara();
+    const v = $('#fp-video'), mini = $('#fp-mini'); v.srcObject = fpStream; mini.srcObject = fpStream;
+    await Promise.all([v.play().catch(() => {}), mini.play().catch(() => {})]);
+  } catch (e) {
+    sinCamara(e && e.name === 'NotAllowedError' ? 'Falta dar permiso para usar la cámara.' : 'No se pudo abrir la cámara.');
+  }
+}
+function sinCamara(txt){ fpSinCam = true; $('#fp-msg-txt').textContent = txt; $('#fp-msg').hidden = false; $('#fp-disp').hidden = true; }
+function pararCamara(){ if (fpStream) { fpStream.getTracks().forEach(t => t.stop()); fpStream = null; } ['#fp-video', '#fp-mini'].forEach(x => { const v = $(x); if (v) v.srcObject = null; }); }
+$('#dlg-fpick').addEventListener('close', pararCamara);
+$('#fp-cerrar').onclick = () => { $('#dlg-fpick').classList.add('grid'); $('#fp-mini').play().catch(() => {}); };
+$('#fp-disp').onclick = async () => {
+  const v = $('#fp-video'); if (!v.videoWidth) return;
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
+  v.pause();
+  mostrarPrevia(blob, 'camara');
+};
+async function mostrarPrevia(archivo, origen){
+  try {
+    const d = await fpConf.comprimir(archivo);
+    fprev = { d, origen };
+    $('#fprev-img').src = d; $('#fprev-txt').textContent = fpConf.ayuda || '';
+    $('#fprev-rep').innerHTML = ic(origen === 'galeria' ? 'image' : 'camera') + (origen === 'galeria' ? 'Elegir otra' : 'Repetir foto');
+    if (!$('#dlg-fprev').open) $('#dlg-fprev').showModal();
+  } catch { toast('No se pudo leer la foto'); $('#fp-video').play().catch(() => {}); }
+}
+// Galería y cámara del sistema (si la de la app no abre)
+['#fp-gal', '#fp-cam-in'].forEach(x => {
+  $(x).addEventListener('click', () => permitirSalida());
+  $(x).addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) mostrarPrevia(f, x === '#fp-gal' ? 'galeria' : 'sistema'); });
+});
+$('#fp-sistema').onclick = () => $('#fp-cam-in').click();
+$('#fprev-rep').onclick = () => {
+  const o = fprev?.origen; fprev = null; $('#dlg-fprev').close();
+  if (o === 'galeria') $('#fp-gal').click(); else if (o === 'sistema') $('#fp-cam-in').click(); else $('#fp-video').play().catch(() => {});
+};
+$('#dlg-fprev').addEventListener('close', () => { if (fprev && $('#dlg-fpick').open) { fprev = null; $('#fp-video').play().catch(() => {}); } });
+$('#fprev-ok').onclick = () => { const f = fprev; fprev = null; $('#dlg-fprev').close(); $('#dlg-fpick').close(); if (f) fpConf.alUsar(f.d); };
 const AYUDA_COMP = 'Revise que se lean bien el monto, la fecha y el nombre. Si no, toque Repetir.';
-['#foto-cam', '#foto-gal'].forEach(x => prepararFoto($(x), f => comprimirFoto(f), d => { fotoComp = d; pintarFoto(); toast('Foto lista'); }, AYUDA_COMP));
+$('#foto-abrir').onclick = () => abrirSelectorFoto({ titulo: 'Foto del comprobante', ayuda: AYUDA_COMP, comprimir: f => comprimirFoto(f),
+  alUsar: d => { fotoComp = d; pintarFoto(); toast('Foto lista'); } });
 $('#foto-prev').addEventListener('click', e => { if (e.target.closest('#foto-quitar')) { fotoComp = null; pintarFoto(); } });
 
 /* Cola de fotos: se guardan en el teléfono (IndexedDB) y se suben al servidor cuando hay internet */
@@ -2252,7 +2349,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '27'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '28'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2622,8 +2719,8 @@ $('#alquiler').addEventListener('click', async e => {
 });
 // --- Disfraces (administrador) ---
 let disfEdit = null, fotoDisfNueva = null;
-['#alf-foto-cam', '#alf-foto-gal'].forEach(x => prepararFoto($(x), f => comprimirFoto(f, 640, 'image/webp'),
-  d => { fotoDisfNueva = d; $('#alf-foto').innerHTML = `<img src="${d}" alt="Foto nueva">`; toast('Foto lista: toque Guardar'); }, 'Que se vea el disfraz completo y con buena luz.'));
+$('#alf-foto-abrir').onclick = () => abrirSelectorFoto({ titulo: 'Foto del disfraz', ayuda: 'Que se vea el disfraz completo y con buena luz.', comprimir: f => comprimirFoto(f, 640, 'image/webp'),
+  alUsar: d => { fotoDisfNueva = d; $('#alf-foto').innerHTML = `<img src="${d}" alt="Foto nueva">`; toast('Foto lista: toque Guardar'); } });
 function abrirDisfraz(d){
   disfEdit = d || null; fotoDisfNueva = null;
   $('#ald2-tit').textContent = d ? 'Editar disfraz' : 'Nuevo disfraz';
