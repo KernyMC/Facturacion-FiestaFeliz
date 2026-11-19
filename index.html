@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#4f46e5">
+<meta name="theme-color" content="#0B1B6B">
 <meta name="description" content="Control de ventas para Fiesta Feliz">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -15,7 +15,7 @@
 <title>Fiesta Feliz</title>
 <style>
   :root{
-    --c:#4f46e5; --c2:#4338ca; --cl:#eef2ff; --ink:#111827; --mut:#6b7280; --line:#e5e7eb;
+    --c:#0B1B6B; --c2:#08144f; --cl:#e8ebf8; --amarillo:#FFD400; --rosa:#FF2E7E; --turquesa:#00C2D1; --ink:#111827; --mut:#6b7280; --line:#e5e7eb;
     --bg:#f6f7f9; --card:#fff; --nav:62px; --sb:env(safe-area-inset-bottom);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -26,7 +26,8 @@
 
   /* Barra superior */
   .top{position:sticky;top:0;z-index:20;background:var(--c);color:#fff;display:flex;align-items:center;gap:10px;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top))}
-  .top h1{margin:0;font-size:18px;font-weight:700;flex:1;white-space:nowrap}
+  .top h1{margin:0;font-size:18px;font-weight:700;flex:1;white-space:nowrap;display:flex;align-items:center;min-width:0}
+  .top h1 img{height:44px;margin:-3px 0;width:auto;display:block}
   .uchip{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border-radius:10px;padding:0 12px 0 10px;height:38px;font-size:15px;font-weight:600;max-width:55vw}
   .uchip span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .uchip svg.i{width:18px;height:18px}
@@ -63,9 +64,7 @@
   /* Pantalla de PIN */
   .lock{position:fixed;inset:0;z-index:100;background:var(--c);color:#fff;display:flex;align-items:center;justify-content:center;padding:24px}
   .lock-in{width:100%;max-width:300px;text-align:center}
-  .lock .logo{width:64px;height:64px;border-radius:18px;background:#fff;color:var(--c);display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
-  .lock .logo svg.i{width:34px;height:34px}
-  .lock h2{margin:0 0 4px;font-size:24px}
+  .lock .lock-logo{display:block;width:150px;max-width:60%;height:auto;margin:0 auto 14px}
   .lock p{margin:0 0 22px;color:rgba(255,255,255,.85);min-height:20px}
   .dots{display:flex;justify-content:center;gap:16px;margin-bottom:30px}
   .dots i{width:16px;height:16px;border-radius:50%;border:2px solid #fff}
@@ -181,7 +180,7 @@
   .mic{width:88px;height:88px;border-radius:50%;border:0;background:var(--c);color:#fff;display:flex;align-items:center;justify-content:center;margin:4px auto 8px;cursor:pointer}
   .mic svg.i{width:38px;height:38px}
   .mic.on{animation:pulse 1.2s infinite}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(79,70,229,.45)}100%{box-shadow:0 0 0 20px rgba(79,70,229,0)}}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(11,27,107,.45)}100%{box-shadow:0 0 0 20px rgba(11,27,107,0)}}
   .chip{display:inline-block;background:var(--cl);color:var(--c);border-radius:8px;padding:3px 9px;margin:3px 3px 0 0;font-size:13px}
   .link{background:none;border:0;color:var(--c);font-weight:600;cursor:pointer;padding:6px 0}
 
@@ -272,7 +271,7 @@
   .pasos{display:flex;gap:6px;padding:10px 18px 0}
   .pasos span{flex:1;text-align:center;font-size:12px;font-weight:700;color:var(--mut);padding:7px 0;border-bottom:3px solid var(--line)}
   .pasos span.on{color:var(--c);border-color:var(--c)}
-  .pasos span.ok{color:var(--c);border-color:#a5b4fc}
+  .pasos span.ok{color:var(--c);border-color:#9aa5d8}
   .cond{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff}
   .cond .ci{width:36px;height:36px;border-radius:10px;background:var(--cl);color:var(--c);display:flex;align-items:center;justify-content:center;flex:none}
   .cond .ct{display:block;font-size:15px;font-weight:700;margin-bottom:2px}
@@ -414,7 +413,7 @@
 <body>
 
 <header class="top">
-  <h1>Fiesta Feliz</h1>
+  <h1><img src="icons/logo.svg" alt="La Fiesta Feliz"></h1>
   <button class="uchip" id="btn-mias" title="Mis ventas de hoy"><span data-ic="user"></span><span id="u-nombre"></span></button>
   <button class="top-ib adm campana" id="btn-notif" aria-label="Notificaciones" title="Notificaciones" data-ic="campana"><span class="notif-n" id="notif-n" hidden></span></button>
   <button class="top-ib" id="btn-salir" aria-label="Cerrar sesión" title="Cerrar sesión" data-ic="lock"></button>
@@ -428,8 +427,7 @@
 <!-- Pantalla de PIN -->
 <div class="lock" id="lock">
   <div class="lock-in">
-    <div class="logo" data-ic="cart"></div>
-    <h2>Fiesta Feliz</h2>
+    <img class="lock-logo" src="icons/logo-vertical.svg" alt="La Fiesta Feliz">
     <p id="lock-msg">Ingrese su PIN</p>
     <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
     <div class="pad" id="pad">

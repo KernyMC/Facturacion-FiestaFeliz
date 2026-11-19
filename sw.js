@@ -1,6 +1,6 @@
 // Service worker: primero intenta la red (para recibir mejoras) y si no hay internet usa la copia guardada.
 const CACHE = 'fiesta-feliz-v29';
-const ARCHIVOS = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/deuna.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+const ARCHIVOS = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/logo.svg', 'icons/logo-vertical.svg', 'icons/deuna.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS)));
