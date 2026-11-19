@@ -330,6 +330,9 @@
   .logo-deuna{height:20px;width:auto}
   .pay button.on .logo-deuna{filter:none}
   .foto-btn{display:flex;align-items:center;justify-content:center;gap:8px;height:56px;border:1.5px dashed var(--c);border-radius:12px;color:var(--c);font-weight:600;cursor:pointer;background:var(--cl)}
+  .foto-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .foto-btns .foto-btn{height:52px;font-size:15px}
+  #fprev-img{width:100%;max-height:60vh;object-fit:contain;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
   .foto-prev{position:relative;margin-top:10px}
   .foto-prev img{width:100%;max-height:220px;object-fit:contain;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
   .foto-prev button{position:absolute;top:8px;right:8px}
@@ -819,7 +822,10 @@
     <div id="digital-box" hidden>
       <div class="fld" id="banco-fld"><span class="lbl">Banco de origen</span><select id="pago-banco"></select></div>
       <span class="lbl">Foto del comprobante</span>
-      <label class="foto-btn" id="foto-btn"><span data-ic="camera"></span><span id="foto-txt">Tomar foto o elegir captura</span><input type="file" id="foto-in" accept="image/*" hidden></label>
+      <div class="foto-btns">
+        <label class="foto-btn"><span data-ic="camera"></span><span>Tomar foto</span><input type="file" id="foto-cam" accept="image/*" capture="environment" hidden></label>
+        <label class="foto-btn"><span data-ic="image"></span><span>Galería</span><input type="file" id="foto-gal" accept="image/*" hidden></label>
+      </div>
       <div id="foto-prev"></div>
     </div>
   </div>
@@ -1003,12 +1009,25 @@
   <div class="sh-b"><iframe id="alc-frame" sandbox="" title="Contrato firmado" class="contrato-frame" style="height:70vh"></iframe></div>
 </dialog>
 
+<!-- Vista previa de una foto antes de usarla -->
+<dialog id="dlg-fprev">
+  <div class="sh-h"><h3>¿Se ve bien la foto?</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b">
+    <img id="fprev-img" alt="Vista previa">
+    <p class="muted small" id="fprev-txt" style="margin:10px 0 0"></p>
+  </div>
+  <div class="sh-f"><button class="btn soft" id="fprev-rep"></button><button class="btn pri" id="fprev-ok"><span data-ic="check"></span>Usar esta foto</button></div>
+</dialog>
+
 <!-- Disfraz (administrador) -->
 <dialog id="dlg-al-disf">
   <div class="sh-h"><h3 id="ald2-tit">Disfraz</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
   <div class="sh-b">
     <div class="alf-foto" id="alf-foto"></div>
-    <label class="foto-btn" style="margin-bottom:12px"><span data-ic="camera"></span><span>Cambiar foto</span><input type="file" id="alf-foto-in" accept="image/*" hidden></label>
+    <div class="foto-btns" style="margin-bottom:12px">
+      <label class="foto-btn"><span data-ic="camera"></span><span>Tomar foto</span><input type="file" id="alf-foto-cam" accept="image/*" capture="environment" hidden></label>
+      <label class="foto-btn"><span data-ic="image"></span><span>Galería</span><input type="file" id="alf-foto-gal" accept="image/*" hidden></label>
+    </div>
     <div class="fld"><span class="lbl">Nombre</span><input id="alf-nombre" placeholder="Ej: Dinosaurio naranja #3"></div>
     <div class="fld"><span class="lbl">Estado</span><select id="alf-estado"><option value="disponible">Disponible</option><option value="reparacion">En reparación</option></select></div>
     <label class="sw-row"><span><b>Incluye ventilador</b></span><input type="checkbox" id="alf-vent" class="sw"></label>
@@ -2176,13 +2195,27 @@ async function comprimirFoto(file, max = 1280, tipo = 'image/jpeg'){
 }
 function pintarFoto(){
   $('#foto-prev').innerHTML = fotoComp ? `<div class="foto-prev"><img src="${fotoComp}" alt="Comprobante"><button class="ib sm" id="foto-quitar" aria-label="Quitar foto">${ic('x')}</button></div>` : '';
-  $('#foto-txt').textContent = fotoComp ? 'Cambiar foto' : 'Tomar foto o elegir captura';
 }
-$('#foto-in').addEventListener('click', () => permitirSalida());
-$('#foto-in').addEventListener('change', async e => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { fotoComp = await comprimirFoto(f); pintarFoto(); toast('Foto lista'); } catch { toast('No se pudo leer la foto'); }
-});
+/* Fotos: "Tomar foto" abre la cámara y "Galería" las fotos guardadas. Antes de usarla se ve en grande
+   y se puede repetir si salió mal. */
+let fprev = null;
+function prepararFoto(input, comprimir, alUsar, ayuda){
+  input.addEventListener('click', () => permitirSalida());
+  input.addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const d = await comprimir(f), cam = input.hasAttribute('capture');
+      fprev = { d, input, alUsar };
+      $('#fprev-img').src = d; $('#fprev-txt').textContent = ayuda || '';
+      $('#fprev-rep').innerHTML = ic(cam ? 'camera' : 'image') + (cam ? 'Repetir foto' : 'Elegir otra');
+      if (!$('#dlg-fprev').open) $('#dlg-fprev').showModal();
+    } catch { toast('No se pudo leer la foto'); }
+  });
+}
+$('#fprev-rep').onclick = () => { const i = fprev?.input; fprev = null; $('#dlg-fprev').close(); if (i) i.click(); };
+$('#fprev-ok').onclick = () => { const f = fprev; fprev = null; $('#dlg-fprev').close(); if (f) f.alUsar(f.d); };
+const AYUDA_COMP = 'Revise que se lean bien el monto, la fecha y el nombre. Si no, toque Repetir.';
+['#foto-cam', '#foto-gal'].forEach(x => prepararFoto($(x), f => comprimirFoto(f), d => { fotoComp = d; pintarFoto(); toast('Foto lista'); }, AYUDA_COMP));
 $('#foto-prev').addEventListener('click', e => { if (e.target.closest('#foto-quitar')) { fotoComp = null; pintarFoto(); } });
 
 /* Cola de fotos: se guardan en el teléfono (IndexedDB) y se suben al servidor cuando hay internet */
@@ -2219,7 +2252,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '26'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '27'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2589,11 +2622,8 @@ $('#alquiler').addEventListener('click', async e => {
 });
 // --- Disfraces (administrador) ---
 let disfEdit = null, fotoDisfNueva = null;
-$('#alf-foto-in').addEventListener('click', () => permitirSalida());
-$('#alf-foto-in').addEventListener('change', async e => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { fotoDisfNueva = await comprimirFoto(f, 640, 'image/webp'); $('#alf-foto').innerHTML = `<img src="${fotoDisfNueva}" alt="Foto nueva">`; toast('Foto lista: toque Guardar'); } catch { toast('No se pudo leer la foto'); }
-});
+['#alf-foto-cam', '#alf-foto-gal'].forEach(x => prepararFoto($(x), f => comprimirFoto(f, 640, 'image/webp'),
+  d => { fotoDisfNueva = d; $('#alf-foto').innerHTML = `<img src="${d}" alt="Foto nueva">`; toast('Foto lista: toque Guardar'); }, 'Que se vea el disfraz completo y con buena luz.'));
 function abrirDisfraz(d){
   disfEdit = d || null; fotoDisfNueva = null;
   $('#ald2-tit').textContent = d ? 'Editar disfraz' : 'Nuevo disfraz';
