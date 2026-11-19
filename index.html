@@ -47,6 +47,8 @@
   .opc button{text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer;font-weight:600}
   .opc button small{display:block;font-weight:400;color:var(--mut);margin-top:2px}
   .opc button.on{border-color:var(--c);background:var(--cl);color:var(--c)}
+  .deuda{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 12px;margin-bottom:6px;border:1px solid var(--line);border-radius:10px;background:var(--card);cursor:pointer;text-align:left;font-size:14px}
+  .deuda small{display:block;color:var(--mut)}
   .mov{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
   .mov small{display:block;color:var(--mut)}
   .notif{padding:12px 0;border-bottom:1px solid var(--line);display:flex;gap:10px}
@@ -509,6 +511,11 @@
         <h2>Caja fuerte</h2>
         <div id="r-fuerte"></div>
         <button class="btn soft block" id="btn-fuerte-r" style="margin-top:10px"><span data-ic="boveda"></span>Registrar movimiento</button>
+      </div>
+      <div class="card">
+        <h2>Caja chica y préstamos</h2>
+        <div id="r-chica"></div>
+        <button class="btn soft block" id="btn-chica-r" style="margin-top:10px"><span data-ic="cash"></span>Registrar préstamo o pago</button>
       </div>
       <div class="card">
         <h2>Comprobantes de transferencia y Deuna</h2>
@@ -1066,6 +1073,35 @@
   <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="f-ok"><span data-ic="check"></span>Registrar</button></div>
 </dialog>
 
+<!-- Caja chica: préstamos que damos y que nos dan -->
+<dialog id="dlg-chica">
+  <div class="sh-h"><h3>Caja chica</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
+  <div class="sh-b">
+    <div class="kpis" id="ch-kpis" style="margin-bottom:10px"></div>
+    <div id="ch-deudas"></div>
+    <span class="lbl" style="margin-top:12px">¿Qué pasó?</span>
+    <div class="opc" id="ch-tipo">
+      <button data-m="presto">Le prestamos dinero a alguien<small>Esa persona nos queda debiendo</small></button>
+      <button data-m="cobro">Nos devolvieron un préstamo<small>Alguien nos pagó lo que nos debía</small></button>
+      <button data-m="recibo">Alguien nos prestó dinero<small>Le quedamos debiendo a esa persona</small></button>
+      <button data-m="pago">Devolvimos un préstamo<small>Le pagamos a quien nos prestó</small></button>
+      <button data-m="deposito" class="adm">Guardé dinero en la caja chica<small>Solo administrador</small></button>
+      <button data-m="retiro" class="adm">Saqué dinero de la caja chica<small>Solo administrador</small></button>
+    </div>
+    <div class="fld" id="ch-persona-f"><span class="lbl">Persona</span><input id="ch-persona" list="dl-personas" autocomplete="off" placeholder="Nombre de la persona"></div>
+    <datalist id="dl-personas"></datalist>
+    <div class="fld"><span class="lbl">Monto</span><input id="ch-monto" class="money"></div>
+    <div id="ch-origen-f">
+      <span class="lbl" id="ch-origen-lbl">¿De dónde sale el dinero?</span>
+      <div class="pay desc" id="ch-origen"><button data-o="chica">Caja chica</button><button data-o="caja">Caja de ventas</button></div>
+    </div>
+    <div class="fld"><span class="lbl">Nota</span><input id="ch-nota" maxlength="120" placeholder="Opcional"></div>
+    <h3 class="sec" style="margin-top:16px">Últimos movimientos</h3>
+    <div id="ch-lista"></div>
+  </div>
+  <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ch-ok"><span data-ic="check"></span>Registrar</button></div>
+</dialog>
+
 <!-- Borrar una venta (con nota) -->
 <dialog id="dlg-borrar">
   <div class="sh-h"><h3 id="b-tit">Borrar venta</h3><button class="ib plain" data-close aria-label="Cerrar" data-ic="x"></button></div>
@@ -1453,7 +1489,10 @@ function resumenTurno(t){
   o.fuerteIn = 0; o.fuerteOut = 0;
   (db.movimientos || []).forEach(m => { if (m.tipo !== 'fuerte' || m.turnoId !== t.id) return; if (m.mov === 'a-caja') o.fuerteIn = r2(o.fuerteIn + m.monto); else if (m.mov === 'a-fuerte') o.fuerteOut = r2(o.fuerteOut + m.monto); });
   o.prestamoPend = Math.max(0, r2(o.fuerteIn - o.fuerteOut));
-  o.esperado = r2((t.cajaInicial || 0) + o.efectivo + o.garRec - o.garDev + o.fuerteIn - o.fuerteOut);
+  // Préstamos de la caja chica pagados o recibidos con el efectivo de la caja de ventas
+  o.chicaIn = 0; o.chicaOut = 0;
+  (db.movimientos || []).forEach(m => { if (m.tipo !== 'chica' || m.turnoId !== t.id || m.origen !== 'caja') return; if (ENTRA_CHICA.has(m.mov)) o.chicaIn = r2(o.chicaIn + m.monto); else o.chicaOut = r2(o.chicaOut + m.monto); });
+  o.esperado = r2((t.cajaInicial || 0) + o.efectivo + o.garRec - o.garDev + o.fuerteIn - o.fuerteOut + o.chicaIn - o.chicaOut);
   o.diferencia = t.contado == null ? null : r2(t.contado - o.esperado);
   return o;
 }
@@ -1498,7 +1537,9 @@ function listaPorPago(t){
   }).join('');
 }
 const lineasFuerte = o => (o.fuerteIn ? `<div class="kv"><span>Sacado de la caja fuerte</span><span class="n">+${money(o.fuerteIn)}</span></div>` : '')
-  + (o.fuerteOut ? `<div class="kv"><span>Devuelto a la caja fuerte</span><span class="n">-${money(o.fuerteOut)}</span></div>` : '');
+  + (o.fuerteOut ? `<div class="kv"><span>Devuelto a la caja fuerte</span><span class="n">-${money(o.fuerteOut)}</span></div>` : '')
+  + (o.chicaIn ? `<div class="kv"><span>Préstamos que entraron a la caja</span><span class="n">+${money(o.chicaIn)}</span></div>` : '')
+  + (o.chicaOut ? `<div class="kv"><span>Préstamos pagados con la caja</span><span class="n">-${money(o.chicaOut)}</span></div>` : '');
 function abrirCierre(t, forzado){
   turnoCierre = t; cierreForzado = forzado || false;
   const o = resumenTurno(t);
@@ -1506,7 +1547,7 @@ function abrirCierre(t, forzado){
     <div class="muted small" style="margin-bottom:8px">${esc(t.vendedora)} · ${t.fecha} · desde las ${t.abre} · ${o.n} venta(s)</div>
     <div class="kv"><span>Caja inicial</span><span class="n">${money(t.cajaInicial)}</span></div>
     <div class="kv"><span>Ventas en efectivo</span><span class="n">${money(o.efectivo)}</span></div>
-    <div class="kv"><span>Ventas por transferencia</span><span class="n">${money(o.transferencia)}</span></div>
+    <div class="kv"><span>Ventas por transferencia bancaria</span><span class="n">${money(o.transferencia)}</span></div>
     <div class="kv"><span>Ventas por Deuna</span><span class="n">${money(o.deuna)}</span></div>
     <div class="kv"><span>Total vendido</span><span class="n">${money(o.total)}</span></div>
     ${o.garRec ? `<div class="kv"><span>Garantías recibidas (efectivo)</span><span class="n">+${money(o.garRec)}</span></div>` : ''}
@@ -1555,7 +1596,8 @@ function mostrarCajaCerrada(t, o, despues){
   textoCierre = [`CIERRE DE CAJA - FIESTA FELIZ`, `${t.vendedora} · ${t.fecha} · ${t.abre} a ${t.cierra}`, '',
     `Quedó en caja (contado): ${money(t.contado)}`, `Debía haber: ${money(o.esperado)} · ${textoDif(o.diferencia)}`, '',
     `Efectivo: ${money(o.efectivo)}`, `Transferencias (${nT}): ${money(o.transferencia)}`, `Deuna (${nD}): ${money(o.deuna)}`, `Total vendido: ${money(o.total)}`,
-    ...(o.fuerteIn || o.fuerteOut ? [`Caja fuerte: sacado ${money(o.fuerteIn)} · devuelto ${money(o.fuerteOut)}`] : [])].join('\n');
+    ...(o.fuerteIn || o.fuerteOut ? [`Caja fuerte: sacado ${money(o.fuerteIn)} · devuelto ${money(o.fuerteOut)}`] : []),
+    ...(o.chicaIn || o.chicaOut ? [`Préstamos con la caja: entró ${money(o.chicaIn)} · salió ${money(o.chicaOut)}`] : [])].join('\n');
   $('#dlg-cierre-ok').showModal();
 }
 $('#dlg-cierre-ok').addEventListener('cancel', e => e.preventDefault());
@@ -2151,7 +2193,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '24'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '25'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -3002,7 +3044,11 @@ function renderHistorial(){
   const vs = filtrar($('#h-desde').value, $('#h-hasta').value, sel.value)
     .filter(v => !qc || clave(v.cliente).includes(qc) || (v.clienteData?.id || '').includes(qc)).reverse();
   const s = sumar(vs);
+  const hp = sumaPagos(); vs.forEach(v => acumular(hp, v));
   $('#h-kpis').innerHTML = `<div class="kpi main"><small>${vs.length} venta(s)</small><b class="n">${money(s.total)}</b></div>
+    <div class="kpi"><small>Efectivo</small><b class="n">${money(hp.efectivo)}</b></div>
+    <div class="kpi"><small>Transferencia bancaria</small><b class="n">${money(hp.transferencia)}</b></div>
+    <div class="kpi"><small>Deuna</small><b class="n">${money(hp.deuna)}</b></div>
     <div class="kpi"><small>Subtotal</small><b class="n">${money(s.sub)}</b></div><div class="kpi"><small>IVA</small><b class="n">${money(s.iva)}</b></div>`;
   $('#h-lista').innerHTML = vs.length ? vs.map(v => `<button class="sale" data-u="${esc(v.uid || v.id)}">
       <div class="s1"><b>${esc(v.cliente)}<span class="ptag">${PAGOS[v.pago || 'efectivo']}</span></b><small>${v.fecha} ${v.hora || ''} · ${esc(v.vendedora || '-')}</small>
@@ -3096,7 +3142,7 @@ function renderDiario(){
   vs.forEach(v => acumular(tot, v));
   $('#r-kpis').innerHTML = `<div class="kpi main"><small>${fechaLarga(f)} · ${tot.n} venta(s)</small><b class="n">${money(tot.total)}</b></div>
     <div class="kpi"><small>Efectivo</small><b class="n">${money(tot.efectivo)}</b></div>
-    <div class="kpi"><small>Transferencia</small><b class="n">${money(tot.transferencia)}</b></div>
+    <div class="kpi"><small>Transferencia bancaria</small><b class="n">${money(tot.transferencia)}</b></div>
     <div class="kpi"><small>Deuna</small><b class="n">${money(tot.deuna)}</b></div>
     <div class="kpi"><small>IVA del día</small><b class="n">${money(s.iva)}</b></div>
     <div class="kpi"><small>Descuentos dados</small><b class="n">${money(vs.reduce((x, v) => x + (v.descuentoMonto || 0) + (v.descuentoLineas || 0), 0))}</b></div>`;
@@ -3113,6 +3159,11 @@ function renderDiario(){
   const mf = movsFuerte().filter(m => m.fecha === f);
   $('#r-fuerte').innerHTML = `<div class="kv b"><span>Debería haber ahora</span><span class="n">${money(saldoFuerte())}</span></div>`
     + (mf.map(filaMov).join('') || '<div class="muted small">Sin movimientos este día</div>');
+  const ds = deudasChica(), mc = movsChica().filter(m => m.fecha === f);
+  $('#r-chica').innerHTML = `<div class="kv b"><span>En la caja chica debería haber</span><span class="n">${money(saldoChica())}</span></div>`
+    + ds.filter(o => o.nosDebe > 0).map(o => `<div class="kv"><span>${esc(o.nombre)} nos debe</span><span class="n">${money(o.nosDebe)}</span></div>`).join('')
+    + ds.filter(o => o.debemos > 0).map(o => `<div class="kv"><span>Le debemos a ${esc(o.nombre)}</span><span class="n">${money(o.debemos)}</span></div>`).join('')
+    + (mc.map(filaChica).join('') || '<div class="muted small">Sin movimientos este día</div>');
   $('#r-prod').innerHTML = topProductos(vs, 20);
   const dig = vs.filter(v => v.pago && v.pago !== 'efectivo'), conFoto = dig.filter(v => v.comprobante && v.comprobante !== 'error');
   $('#r-comp-info').textContent = dig.length
@@ -3125,6 +3176,7 @@ function renderDiario(){
 }
 $('#btn-ver-fotos').onclick = () => verComprobantesDelDia($('#r-fecha').value);
 $('#btn-fuerte-r').onclick = abrirFuerte;
+$('#btn-chica-r').onclick = abrirChica;
 $('#r-turnos').addEventListener('click', e => {
   const h = e.target.closest('[data-horas]');
   if (h) { const t = db.turnos.find(x => x.id === h.dataset.horas); if (t) abrirHoras(t); return; }
@@ -3246,7 +3298,10 @@ function renderResumen(){
   const tot = vs.reduce((a, v) => a + v.total, 0), dias = new Set(vs.map(v => v.fecha)).size;
   $('#d-kpis').innerHTML = `<div class="kpi main"><small>Vendido en el mes · ${vs.length} venta(s)</small><b class="n">${money(tot)}</b></div>
     <div class="kpi"><small>Promedio por día</small><b class="n">${money(dias ? tot / dias : 0)}</b></div>
-    <div class="kpi"><small>Venta promedio</small><b class="n">${money(vs.length ? tot / vs.length : 0)}</b></div>`;
+    <div class="kpi"><small>Venta promedio</small><b class="n">${money(vs.length ? tot / vs.length : 0)}</b></div>
+    ${(() => { const mp = sumaPagos(); vs.forEach(v => acumular(mp, v)); return `<div class="kpi"><small>Efectivo</small><b class="n">${money(mp.efectivo)}</b></div>
+    <div class="kpi"><small>Transferencia bancaria</small><b class="n">${money(mp.transferencia)}</b></div>
+    <div class="kpi"><small>Deuna</small><b class="n">${money(mp.deuna)}</b></div>`; })()}`;
   const al = alertasDelMes(m, vs);
   $('#d-alertas').onclick = e => { if (e.target.closest('[data-notif]')) { e.preventDefault(); abrirNotificaciones(); } };
   $('#d-alertas').innerHTML = al.length ? al.map(a => `<div class="alerta">${a}</div>`).join('') : '<div class="muted small">Todo en orden: no hay alertas este mes.</div>';
@@ -3331,6 +3386,78 @@ $('#f-ok').onclick = () => {
   if (tabActual === 'reportes') renderReportes();
 };
 
+/* ================= Caja chica: préstamos que damos y que nos dan ================= */
+const MOV_CHICA = { presto: 'Le prestamos a', cobro: 'Nos devolvió', recibo: 'Nos prestó', pago: 'Le devolvimos a', deposito: 'Guardó dinero en la caja chica', retiro: 'Sacó dinero de la caja chica' };
+const ENTRA_CHICA = new Set(['cobro', 'recibo', 'deposito']);
+const CON_PERSONA = new Set(['presto', 'cobro', 'recibo', 'pago']);
+const movsChica = () => (db.movimientos || []).filter(m => m.tipo === 'chica');
+/** Lo que debería haber en la caja chica (sin contar lo que se movió con la caja de ventas) */
+const saldoChica = () => r2(movsChica().filter(m => m.origen !== 'caja').reduce((a, m) => a + (ENTRA_CHICA.has(m.mov) ? m.monto : -m.monto), 0));
+/** Quién nos debe y a quién le debemos */
+function deudasChica(){
+  const p = {};
+  movsChica().forEach(m => {
+    if (!m.persona || !CON_PERSONA.has(m.mov)) return;
+    const o = p[clave(m.persona)] ||= { nombre: m.persona, nosDebe: 0, debemos: 0 };
+    if (m.mov === 'presto') o.nosDebe += m.monto; else if (m.mov === 'cobro') o.nosDebe -= m.monto;
+    else if (m.mov === 'recibo') o.debemos += m.monto; else if (m.mov === 'pago') o.debemos -= m.monto;
+  });
+  return Object.values(p).map(o => ({ ...o, nosDebe: r2(o.nosDebe), debemos: r2(o.debemos) }));
+}
+const textoMovChica = m => CON_PERSONA.has(m.mov) && m.persona ? `${MOV_CHICA[m.mov]} ${m.persona}` : MOV_CHICA[m.mov] || m.mov;
+const filaChica = m => `<div class="mov"><span>${esc(textoMovChica(m))}<small>${m.fecha === hoy() ? '' : m.fecha + ' '}${m.hora || ''} · ${esc(m.quien || '')} · ${m.origen === 'caja' ? 'caja de ventas' : 'caja chica'}${m.nota ? ' · ' + esc(m.nota) : ''}</small></span><b class="n">${ENTRA_CHICA.has(m.mov) ? '+' : '-'}${money(m.monto)}</b></div>`;
+let movChica = 'presto', origenChica = 'chica';
+function abrirChica(){
+  if (!usuario) return;
+  movChica = 'presto'; origenChica = 'chica';
+  ['#ch-persona', '#ch-monto', '#ch-nota'].forEach(x => $(x).value = '');
+  pintarChica(); $('#dlg-chica').showModal();
+}
+function pintarChica(){
+  const ds = deudasChica(), nos = ds.filter(o => o.nosDebe > 0), deb = ds.filter(o => o.debemos > 0);
+  $('#ch-kpis').innerHTML = `<div class="kpi main"><small>En la caja chica debería haber</small><b class="n">${money(saldoChica())}</b></div>
+    <div class="kpi"><small>Nos deben</small><b class="n">${money(nos.reduce((a, o) => a + o.nosDebe, 0))}</b></div>
+    <div class="kpi"><small>Debemos</small><b class="n">${money(deb.reduce((a, o) => a + o.debemos, 0))}</b></div>`;
+  $('#ch-deudas').innerHTML = nos.map(o => `<button class="deuda" data-cobrar="${esc(o.nombre)}" data-monto="${o.nosDebe}"><span>${esc(o.nombre)} nos debe<small>Tocar para registrar que pagó</small></span><b class="n">${money(o.nosDebe)}</b></button>`).join('')
+    + deb.map(o => `<button class="deuda" data-pagar="${esc(o.nombre)}" data-monto="${o.debemos}"><span>Le debemos a ${esc(o.nombre)}<small>Tocar para registrar que le pagamos</small></span><b class="n">${money(o.debemos)}</b></button>`).join('');
+  $('#ch-tipo').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === movChica));
+  const conPersona = CON_PERSONA.has(movChica);
+  $('#ch-persona-f').hidden = !conPersona; $('#ch-origen-f').hidden = !conPersona;
+  $('#ch-origen-lbl').textContent = ENTRA_CHICA.has(movChica) ? '¿A dónde entra el dinero?' : '¿De dónde sale el dinero?';
+  $('#ch-origen').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.o === origenChica));
+  $('#ch-nota').placeholder = movChica === 'retiro' ? 'Obligatorio: para qué se sacó' : 'Opcional';
+  $('#dl-personas').innerHTML = ds.map(o => `<option value="${esc(o.nombre)}">`).join('');
+  $('#ch-lista').innerHTML = movsChica().slice(-15).reverse().map(filaChica).join('') || '<div class="muted small">Sin movimientos todavía</div>';
+}
+$('#ch-tipo').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { movChica = b.dataset.m; pintarChica(); } });
+$('#ch-origen').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { origenChica = b.dataset.o; pintarChica(); } });
+$('#ch-deudas').addEventListener('click', e => {
+  const b = e.target.closest('.deuda'); if (!b) return;
+  movChica = b.dataset.cobrar ? 'cobro' : 'pago';
+  $('#ch-persona').value = b.dataset.cobrar || b.dataset.pagar; $('#ch-monto').value = (+b.dataset.monto).toFixed(2);
+  pintarChica(); $('#ch-monto').focus();
+});
+$('#ch-ok').onclick = () => {
+  const mov = movChica, monto = r2(parseFloat($('#ch-monto').value) || 0), nota = $('#ch-nota').value.trim();
+  const conPersona = CON_PERSONA.has(mov), persona = conPersona ? titulo($('#ch-persona').value) : '', origen = conPersona ? origenChica : 'chica';
+  if (conPersona && !persona) return toast('Escriba el nombre de la persona');
+  if (!(monto > 0)) return toast('Escriba el monto');
+  if ((mov === 'deposito' || mov === 'retiro') && !esAdmin()) return toast('Solo un administrador puede hacer eso');
+  if (mov === 'retiro' && !nota) return toast('Escriba para qué se sacó el dinero');
+  const t = origen === 'caja' ? cajaParaFuerte() : null;
+  if (origen === 'caja' && !t) return toast('No hay una caja de ventas abierta');
+  const d = deudasChica().find(o => clave(o.nombre) === clave(persona));
+  if (mov === 'cobro' && monto > (d?.nosDebe || 0) && !confirm(`${persona} nos debe ${money(d?.nosDebe || 0)}. ¿Registrar igual ${money(monto)}?`)) return;
+  if (mov === 'pago' && monto > (d?.debemos || 0) && !confirm(`Le debemos ${money(d?.debemos || 0)} a ${persona}. ¿Registrar igual ${money(monto)}?`)) return;
+  if (!ENTRA_CHICA.has(mov) && origen === 'chica' && monto > saldoChica() && !confirm(`En la caja chica debería haber ${money(saldoChica())}. ¿Registrar igual ${money(monto)}?`)) return;
+  const m = { id: db.dev + '-C' + Date.now().toString(36), tipo: 'chica', mov, persona, monto, origen, pago: 'efectivo', nota, turnoId: t?.id || null,
+              fecha: hoy(), hora: horaAhora(), ts: Date.now(), quien: usuario.nombre, quienId: usuario.id };
+  (db.movimientos ||= []).push(m); save(); encolar('movimiento', m);
+  if (!esAdmin()) crearAviso('caja-chica', `${textoMovChica(m)}: ${money(monto)}${origen === 'caja' ? ' (con la caja de ventas)' : ''}`, nota, monto);
+  $('#dlg-chica').close(); toast(`${textoMovChica(m)}: ${money(monto)}`);
+  if (tabActual === 'reportes') renderReportes();
+};
+
 /* ================= Notificaciones para los administradores ================= */
 function crearAviso(tipo, detalle, motivo, monto, extra){
   const a = { id: db.dev + '-A' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), tipo, detalle, motivo: motivo || '', monto: monto || 0,
@@ -3344,14 +3471,14 @@ function pintarCampana(){
   const n = esAdmin() ? notifNuevas().length : 0;
   b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
 }
-const TIT_AVISO = { 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte' };
+const TIT_AVISO = { 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte', 'caja-chica': 'registró un préstamo (caja chica)' };
 function abrirNotificaciones(){
   const nuevas = new Set(notifNuevas().map(a => a.id));
   const xs = (db.avisos || []).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 200);
   let dia = '';
   $('#notif-b').innerHTML = xs.map(a => {
     const cab = a.fecha !== dia ? `<h3 class="sec">${fechaLarga(dia = a.fecha)}</h3>` : '';
-    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : 'boveda')}</span><div>
+    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : a.tipo === 'caja-chica' ? 'cash' : 'boveda')}</span><div>
       <b>${esc(a.quien)} ${TIT_AVISO[a.tipo] || ''}</b> <small>${a.hora || ''}</small>
       <p>${esc(a.detalle || '')}</p>${a.motivo ? `<p><small>Nota:</small> ${esc(a.motivo)}</p>` : ''}</div></div>`;
   }).join('') || '<div class="empty">No hay notificaciones.</div>';
@@ -3396,7 +3523,7 @@ $('#btn-mias').onclick = () => {
     <div class="kpis">
       <div class="kpi main"><small>${usuario.nombre} · ${o.n} venta(s) hoy</small><b class="n">${money(o.total)}</b></div>
       <div class="kpi"><small>Efectivo</small><b class="n">${money(o.efectivo)}</b></div>
-      <div class="kpi"><small>Transferencia</small><b class="n">${money(o.transferencia)}</b></div>
+      <div class="kpi"><small>Transferencia bancaria</small><b class="n">${money(o.transferencia)}</b></div>
       <div class="kpi"><small>Deuna</small><b class="n">${money(o.deuna)}</b></div>
     </div>
     ${turno ? (() => { const o2 = resumenTurno(turno); return `<div class="card turno" style="margin-bottom:12px">
@@ -3406,7 +3533,7 @@ $('#btn-mias').onclick = () => {
       ${lineasFuerte(o2)}
       <div class="kv b"><span>Debe haber en caja</span><span class="n">${money(o2.esperado)}</span></div>
       ${o2.prestamoPend ? `<div class="cuadre">Falta devolver ${money(o2.prestamoPend)} a la caja fuerte</div>` : ''}
-      <button class="btn soft block" id="btn-fuerte" style="margin-top:10px">${ic('boveda')}Caja fuerte</button>
+      <div class="row" style="margin-top:10px"><button class="btn soft" id="btn-fuerte">${ic('boveda')}Caja fuerte</button><button class="btn soft" id="btn-chica">${ic('cash')}Caja chica</button></div>
       <button class="btn pri block" id="btn-cerrar-caja" style="margin-top:8px">${ic('lock')}Cerrar mi caja</button></div>`; })() : ''}
     ${vs.length ? '<div class="muted small" style="margin-bottom:4px">Toque una venta para ver el detalle</div>' : ''}
     ${vs.slice().reverse().map(v => `<div class="line" data-u="${esc(v.uid || v.id)}" style="cursor:pointer"><div class="ln"><b>${esc(v.cliente)}<span class="ptag">${PAGOS[v.pago || 'efectivo']}</span></b><small>${v.hora || ''} · ${v.lineas.map(l => `${l.cant} ${esc(l.nombre)}`).join(', ')}</small></div><div class="lt n">${money(v.total)}</div><span class="muted">${ic('right')}</span></div>`).join('') || '<div class="empty">Aún no hay ventas hoy</div>'}`;
@@ -3415,6 +3542,7 @@ $('#btn-mias').onclick = () => {
 $('#mias-b').addEventListener('click', e => {
   if (e.target.closest('#btn-cerrar-caja')) { $('#dlg-mias').close(); return abrirCierre(turno); }
   if (e.target.closest('#btn-fuerte')) { $('#dlg-mias').close(); return abrirFuerte(); }
+  if (e.target.closest('#btn-chica')) { $('#dlg-mias').close(); return abrirChica(); }
   const l = e.target.closest('[data-u]'); if (!l) return;
   const v = db.ventas.find(x => String(x.uid || x.id) === l.dataset.u); if (v) mostrarPrefactura(v, false);
 });
