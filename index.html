@@ -228,6 +228,11 @@
   .estado.abierta{background:var(--c);color:#fff}
   .kv{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
   .kv.b{font-weight:800;border-top:1px solid var(--line);margin-top:4px;padding-top:8px}
+  .recordar{text-align:center;padding-top:26px}
+  .recordar h3{margin:12px 0 6px;font-size:20px}
+  .recordar p{margin:0}
+  .rec-ic{width:64px;height:64px;border-radius:18px;background:var(--cl);color:var(--c);display:flex;align-items:center;justify-content:center;margin:0 auto}
+  .rec-ic svg.i{width:34px;height:34px}
   .cuadre{margin-top:6px;padding:12px;border-radius:12px;background:var(--cl);color:var(--c);font-weight:700;text-align:center}
   .cuadre:empty{display:none}
   table.cierre tr.cero td{color:#c0c4cc}
@@ -1119,6 +1124,16 @@
   <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="cierre-ok"><span data-ic="lock"></span>Cerrar y marcar salida</button></div>
 </dialog>
 
+<!-- Recordatorio al cerrar caja -->
+<dialog id="dlg-recordar">
+  <div class="sh-b recordar">
+    <div class="rec-ic" data-ic="bateria"></div>
+    <h3>Recuerde cargar los dispositivos</h3>
+    <p class="muted">Antes de irse, deje conectados a cargar los teléfonos y demás equipos del local.</p>
+  </div>
+  <div class="sh-f"><button class="btn pri block" id="recordar-ok"><span data-ic="check"></span>Entendido</button></div>
+</dialog>
+
 <!-- Caja cerrada: lo que quedó -->
 <dialog id="dlg-cierre-ok">
   <div class="sh-h"><h3>Caja cerrada</h3></div>
@@ -1310,7 +1325,8 @@ const ICONS = {
   tijera:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 8.5 20 20M8.5 15.5 20 4"/>',
   guante:'<path d="M8 13V5a1.5 1.5 0 0 1 3 0v6V4a1.5 1.5 0 0 1 3 0v7V5.5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 7-6 7s-6-3-6-6l-1-3a1.5 1.5 0 0 1 3-1z"/>',
   camera:'<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
-  image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'
+  image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>',
+  bateria:'<rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2"/><path d="m11 9-2 3h3l-2 3"/>'
 };
 const PAGOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', deuna: 'Deuna' };
 const ic = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -1652,7 +1668,10 @@ function abrirCierre(t, forzado){
     ${listaPorPago(t)}`;
   $('#cierre-contado').value = ''; $('#cierre-dif').textContent = '';
   if (!$('#dlg-cierre').open) $('#dlg-cierre').showModal();
+  // Al cerrar su propia caja: recordatorio de dejar cargando los dispositivos
+  if (usuario && t.usuarioId === usuario.id && !t.cierra && !$('#dlg-recordar').open) $('#dlg-recordar').showModal();
 }
+$('#recordar-ok').onclick = () => $('#dlg-recordar').close();
 $('#cierre-contado').addEventListener('input', () => {
   const c = parseFloat($('#cierre-contado').value);
   $('#cierre-dif').textContent = isNaN(c) ? '' : textoDif(c - resumenTurno(turnoCierre).esperado);
@@ -2347,7 +2366,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '30'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '31'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
