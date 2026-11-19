@@ -344,7 +344,7 @@
   .fp-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
   .fp-msg[hidden]{display:none}
   .fp-msg .btn{background:#fff;color:var(--c);border-color:#fff}
-  #dlg-fpick.grid .fp-cam-ui,#dlg-fpick:not(.grid) .fp-grid-ui{display:none !important}
+  #dlg-fpick.modo-grid .fp-cam-ui,#dlg-fpick:not(.modo-grid) .fp-grid-ui{display:none !important}
   .fp-grid-ui{position:absolute;inset:0;display:flex;flex-direction:column;background:#000}
   .fp-cab{display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 16px 14px;font-weight:700;font-size:18px}
   .fp-cab .fp-x{background:transparent}
@@ -1032,7 +1032,7 @@
 </dialog>
 
 <!-- Cámara: vista en vivo; abajo a la izquierda la galería -->
-<dialog id="dlg-fpick" class="grid">
+<dialog id="dlg-fpick" class="modo-grid">
   <!-- Cuadrícula: primero la cámara, luego la galería -->
   <div class="fp-grid-ui">
     <div class="fp-cab"><button class="fp-x" id="fp-salir" aria-label="Cerrar" data-ic="x"></button><span id="fp-tit">Foto</span><span style="width:40px"></span></div>
@@ -2255,14 +2255,14 @@ let fpConf = null, fpStream = null, fprev = null, fpSinCam = false;
 function abrirSelectorFoto(conf){
   fpConf = conf; $('#fp-tit').textContent = conf.titulo || 'Foto';
   $('#fp-msg').hidden = true; $('#fp-disp').hidden = false; fpSinCam = false;
-  $('#dlg-fpick').classList.add('grid');
+  $('#dlg-fpick').classList.add('modo-grid');
   if (!$('#dlg-fpick').open) $('#dlg-fpick').showModal();
   iniciarCamara();
 }
 // Recuadro "Cámara": abre la cámara en pantalla completa (o la del teléfono si la de la app no abre)
 $('#fp-t-cam').onclick = () => {
   if (fpSinCam) return $('#fp-cam-in').click();
-  $('#dlg-fpick').classList.remove('grid'); $('#fp-video').play().catch(() => {});
+  $('#dlg-fpick').classList.remove('modo-grid'); $('#fp-video').play().catch(() => {});
 };
 $('#fp-salir').onclick = () => $('#dlg-fpick').close();
 async function iniciarCamara(){
@@ -2280,7 +2280,7 @@ async function iniciarCamara(){
 function sinCamara(txt){ fpSinCam = true; $('#fp-msg-txt').textContent = txt; $('#fp-msg').hidden = false; $('#fp-disp').hidden = true; }
 function pararCamara(){ if (fpStream) { fpStream.getTracks().forEach(t => t.stop()); fpStream = null; } ['#fp-video', '#fp-mini'].forEach(x => { const v = $(x); if (v) v.srcObject = null; }); }
 $('#dlg-fpick').addEventListener('close', pararCamara);
-$('#fp-cerrar').onclick = () => { $('#dlg-fpick').classList.add('grid'); $('#fp-mini').play().catch(() => {}); };
+$('#fp-cerrar').onclick = () => { $('#dlg-fpick').classList.add('modo-grid'); $('#fp-mini').play().catch(() => {}); };
 $('#fp-disp').onclick = async () => {
   const v = $('#fp-video'); if (!v.videoWidth) return;
   const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
@@ -2349,7 +2349,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '28'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '29'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
