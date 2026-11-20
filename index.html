@@ -67,6 +67,9 @@
 
   /* Pantalla de PIN */
   .lock{position:fixed;inset:0;z-index:100;background:var(--c);color:#fff;display:flex;align-items:center;justify-content:center;padding:24px}
+  .cortina{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:var(--c);display:none;align-items:center;justify-content:center;z-index:300}
+  .cortina:popover-open,.cortina.on{display:flex}
+  .cortina img{width:150px;max-width:60%;height:auto}
   .lock-in{width:100%;max-width:300px;text-align:center}
   .lock .lock-logo{display:block;width:150px;max-width:60%;height:auto;margin:0 auto 14px}
   .lock p{margin:0 0 22px;color:rgba(255,255,255,.85);min-height:20px}
@@ -433,6 +436,9 @@
   <span>Hay una versión nueva de la app. Se instalará al terminar la venta.</span>
   <button class="btn sm" id="upd-btn">Actualizar</button>
 </div>
+
+<!-- Cortina: tapa la app al salir (antes de que el teléfono congele la imagen) -->
+<div id="cortina" class="cortina" popover="manual" aria-hidden="true"><img src="icons/logo-vertical.svg" alt=""></div>
 
 <!-- Pantalla de PIN -->
 <div class="lock" id="lock">
@@ -1751,6 +1757,30 @@ document.addEventListener('visibilitychange', () => {
     salidaPermitidaHasta = 0; ocultoDesde = 0;
   }
 });
+/* Al cambiar de app el teléfono guarda una imagen de la pantalla y la muestra al volver, antes de que aparezca
+   el PIN. Por eso, apenas la app pierde el foco se tapa con la cortina (sin cerrar la sesión). No se tapa
+   en las salidas permitidas (foto, galería, compartir), con la cámara o el dictado abiertos, ni con avisos
+   del navegador (confirmar) o al tocar dentro de un contrato. */
+let dictando = false, nativoHasta = 0;
+['confirm', 'alert', 'prompt'].forEach(f => {
+  const original = window[f].bind(window);
+  window[f] = (...a) => { nativoHasta = Date.now() + 1500; try { return original(...a); } finally { nativoHasta = Date.now() + 1500; } };
+});
+function mostrarCortina(){
+  if (!usuario || db.bloqueoAlSalir === false || $('#lock').hidden === false) return;
+  if (Date.now() < salidaPermitidaHasta || Date.now() < nativoHasta || dictando || $('#dlg-fpick').open) return;
+  if (document.activeElement?.tagName === 'IFRAME') return;
+  const c = $('#cortina');
+  try { if (c.showPopover) { if (!c.matches(':popover-open')) c.showPopover(); } else c.classList.add('on'); } catch { c.classList.add('on'); }
+}
+function quitarCortina(){
+  const c = $('#cortina'); c.classList.remove('on');
+  try { if (c.matches(':popover-open')) c.hidePopover(); } catch {}
+}
+addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) mostrarCortina(); }, 0));
+addEventListener('pagehide', mostrarCortina);
+addEventListener('focus', () => { if (!document.hidden) quitarCortina(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) mostrarCortina(); else setTimeout(quitarCortina, 50); });
 $('#pad').addEventListener('click', e => { const b = e.target.closest('button'); if (b) teclaPin(b.dataset.k); });
 addEventListener('keydown', e => {
   if ($('#lock').hidden) return;
@@ -2381,7 +2411,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '37'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '38'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -4259,7 +4289,7 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 function crearDictado({ btn, estado, area, ayuda, alTerminar }){
   let rec = null, on = false;
   const ui = () => {
-    btn.classList.toggle('on', on); btn.innerHTML = ic(on ? 'stop' : 'mic');
+    btn.classList.toggle('on', on); btn.innerHTML = ic(on ? 'stop' : 'mic'); dictando = on;
     estado.textContent = on ? 'Escuchando… toque para terminar' : (SR ? ayuda : 'Este navegador no permite dictado. Use Chrome o Edge, o escriba aquí.');
   };
   function toggle(){
@@ -4391,10 +4421,9 @@ function init(){
   db.clientes ||= []; db.productos ||= []; db.turnos ||= []; db.movimientos ||= []; db.avisos ||= [];
   if (!db.usuarios?.length) db.usuarios = USUARIOS_INICIALES();
   db.usuarios.forEach(u => { if (u.nombre === 'Amparito Kaisa') u.nombre = 'Amparito Caiza'; });
-  if (db.ventas.some(v => v.demo) && db.demoV !== 2) quitarDemo();      // ejemplo anterior -> se regenera
+  if (db.ventas.some(v => v.demo) || db.turnos?.some(t => t.demo)) quitarDemo(); // la app ya está en uso real: nada de ejemplo
   db.productos.forEach(p => { p.categoria ||= detectarCategoria(p.nombre); });
   if (!db.catalogoInicial) { CATALOGO_INICIAL.forEach(([n, c, p]) => guardarEnCatalogo(n, c, p)); db.catalogoInicial = true; }
-  if (db.demoV !== 2 && !db.ventas.some(v => !v.demo)) cargarDemo();
   // Ajuste v3 (se aplica una sola vez en cada teléfono): catálogo vacío
   if ((db.cfgV || 0) < 3) {
     db.productos = []; db.catalogoInicial = true; // las categorías son fijas y se conservan
