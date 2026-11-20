@@ -121,6 +121,7 @@
   .ac-list button.act,.ac-list button:hover{background:var(--cl)}
   .ac-list b{color:var(--c)}
   .ac-list .p{color:var(--mut);font-size:14px;white-space:nowrap}
+  .ac-list .p.con{color:var(--ink);font-weight:700;font-size:15px}
 
   /* Cantidad */
   .step{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;height:48px;overflow:hidden;background:#fff}
@@ -1921,7 +1922,7 @@ function renderAC(){
   acItems = sugerencias(q); acSel = -1;
   if (acItems.length === 1 && clave(acItems[0].nombre) === clave(q)) acItems = [];
   $('#ac').innerHTML = acItems.map((p, i) =>
-    `<button type="button" data-i="${i}"><span>${resaltar(p.nombre, q)}</span><span class="p n">${textoPrecio(p)}</span></button>`).join('');
+    `<button type="button" data-i="${i}"><span>${resaltar(p.nombre, q)}</span><span class="p n${tienePrecio(p) ? ' con' : ''}">${textoPrecio(p)}</span></button>`).join('');
   $('#ac').classList.toggle('on', acItems.length > 0);
 }
 function cerrarAC(){ $('#ac').classList.remove('on'); acItems = []; acSel = -1; }
@@ -2380,7 +2381,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '34'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '35'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
