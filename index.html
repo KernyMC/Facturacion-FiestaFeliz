@@ -121,7 +121,7 @@
   .ac-list button.act,.ac-list button:hover{background:var(--cl)}
   .ac-list b{color:var(--c)}
   .ac-list .p{color:var(--mut);font-size:14px;white-space:nowrap}
-  .ac-list .p.con{color:var(--ink);font-weight:700;font-size:15px}
+  .ac-list .p.con{color:#4b5563}
 
   /* Cantidad */
   .step{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;height:48px;overflow:hidden;background:#fff}
@@ -2381,7 +2381,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '35'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '36'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
