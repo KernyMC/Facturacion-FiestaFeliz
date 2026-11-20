@@ -48,6 +48,10 @@
   .opc button{text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer;font-weight:600}
   .opc button small{display:block;font-weight:400;color:var(--mut);margin-top:2px}
   .opc button.on{border-color:var(--c);background:var(--cl);color:var(--c)}
+  .rapidos{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+  .rapidos:empty{display:none}
+  .rapidos button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 12px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;color:var(--ink)}
+  .rapidos button.on{border-color:var(--c);background:var(--cl);color:var(--c)}
   .deuda{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 12px;margin-bottom:6px;border:1px solid var(--line);border-radius:10px;background:var(--card);cursor:pointer;text-align:left;font-size:14px}
   .deuda small{display:block;color:var(--mut)}
   .mov{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
@@ -539,11 +543,6 @@
       <h3 class="sec">Turnos y cuadre de caja</h3>
       <div id="r-turnos"></div>
       <div class="card">
-        <h2>Caja fuerte</h2>
-        <div id="r-fuerte"></div>
-        <button class="btn soft block" id="btn-fuerte-r" style="margin-top:10px"><span data-ic="boveda"></span>Registrar movimiento</button>
-      </div>
-      <div class="card">
         <h2>Egresos del día</h2>
         <div id="r-egresos"></div>
         <button class="btn soft block" id="btn-egreso-r" style="margin-top:10px"><span data-ic="bajada"></span>Registrar egreso</button>
@@ -551,7 +550,7 @@
       <div class="card">
         <h2>Caja chica y préstamos</h2>
         <div id="r-chica"></div>
-        <button class="btn soft block" id="btn-chica-r" style="margin-top:10px"><span data-ic="cash"></span>Registrar préstamo o pago</button>
+        <button class="btn soft block" id="btn-chica-r" style="margin-top:10px"><span data-ic="cash"></span>Caja chica</button>
       </div>
       <div class="card">
         <h2>Comprobantes de transferencia y Deuna</h2>
@@ -1169,16 +1168,18 @@
     <div id="ch-deudas"></div>
     <span class="lbl" style="margin-top:12px">¿Qué pasó?</span>
     <div class="opc" id="ch-tipo">
+      <button data-m="recibo">Alguien nos prestó dinero<small>Una vendedora u otra persona puso dinero (por ejemplo $5 o $10)</small></button>
+      <button data-m="pago">Le devolvimos lo que nos prestó<small>Le pagamos a quien nos prestó</small></button>
       <button data-m="presto">Le prestamos dinero a alguien<small>Esa persona nos queda debiendo</small></button>
       <button data-m="cobro">Nos devolvieron un préstamo<small>Alguien nos pagó lo que nos debía</small></button>
-      <button data-m="recibo">Alguien nos prestó dinero<small>Le quedamos debiendo a esa persona</small></button>
-      <button data-m="pago">Devolvimos un préstamo<small>Le pagamos a quien nos prestó</small></button>
+      <button data-m="a-caja">Saqué de la caja chica para la caja de ventas<small>Para dar cambio o vuelto</small></button>
+      <button data-m="a-chica">Devolví a la caja chica<small>Sale efectivo de la caja de ventas</small></button>
       <button data-m="deposito" class="adm">Guardé dinero en la caja chica<small>Solo administrador</small></button>
       <button data-m="retiro" class="adm">Saqué dinero de la caja chica<small>Solo administrador</small></button>
     </div>
-    <div class="fld" id="ch-persona-f"><span class="lbl">Persona</span><input id="ch-persona" list="dl-personas" autocomplete="off" placeholder="Nombre de la persona"></div>
+    <div class="fld" id="ch-persona-f"><span class="lbl">Persona</span><div class="rapidos" id="ch-personas"></div><input id="ch-persona" list="dl-personas" autocomplete="off" placeholder="O escriba el nombre"></div>
     <datalist id="dl-personas"></datalist>
-    <div class="fld"><span class="lbl">Monto</span><input id="ch-monto" class="money"></div>
+    <div class="fld"><span class="lbl">Monto</span><div class="rapidos" id="ch-montos"><button type="button" data-v="5">$5</button><button type="button" data-v="10">$10</button><button type="button" data-v="20">$20</button></div><input id="ch-monto" class="money"></div>
     <div id="ch-origen-f">
       <span class="lbl" id="ch-origen-lbl">¿De dónde sale el dinero?</span>
       <div class="pay desc" id="ch-origen"><button data-o="chica">Caja chica</button><button data-o="caja">Caja de ventas</button></div>
@@ -1604,10 +1605,12 @@ function resumenTurno(t){
   // Caja fuerte: lo que se sacó para la caja (préstamo) y lo que se devolvió
   o.fuerteIn = 0; o.fuerteOut = 0;
   (db.movimientos || []).forEach(m => { if (m.tipo !== 'fuerte' || m.turnoId !== t.id) return; if (m.mov === 'a-caja') o.fuerteIn = r2(o.fuerteIn + m.monto); else if (m.mov === 'a-fuerte') o.fuerteOut = r2(o.fuerteOut + m.monto); });
-  o.prestamoPend = Math.max(0, r2(o.fuerteIn - o.fuerteOut));
   // Préstamos de la caja chica pagados o recibidos con el efectivo de la caja de ventas
   o.chicaIn = 0; o.chicaOut = 0;
-  (db.movimientos || []).forEach(m => { if (m.tipo !== 'chica' || m.turnoId !== t.id || m.origen !== 'caja') return; if (ENTRA_CHICA.has(m.mov)) o.chicaIn = r2(o.chicaIn + m.monto); else o.chicaOut = r2(o.chicaOut + m.monto); });
+  (db.movimientos || []).forEach(m => { if (m.tipo !== 'chica' || m.turnoId !== t.id || m.origen !== 'caja') return;
+    if (m.mov === 'a-caja') o.fuerteIn = r2(o.fuerteIn + m.monto); else if (m.mov === 'a-chica') o.fuerteOut = r2(o.fuerteOut + m.monto);
+    else if (ENTRA_CHICA.has(m.mov)) o.chicaIn = r2(o.chicaIn + m.monto); else o.chicaOut = r2(o.chicaOut + m.monto); });
+  o.prestamoPend = Math.max(0, r2(o.fuerteIn - o.fuerteOut));
   // Egresos pagados con el efectivo de la caja de ventas
   o.egresos = r2((db.movimientos || []).filter(m => m.tipo === 'egreso' && m.turnoId === t.id && m.origen === 'caja').reduce((a, m) => a + m.monto, 0));
   o.esperado = r2((t.cajaInicial || 0) + o.efectivo + o.garRec - o.garDev + o.fuerteIn - o.fuerteOut + o.chicaIn - o.chicaOut - o.egresos);
@@ -1654,8 +1657,8 @@ function listaPorPago(t){
       ${xs.length ? xs.map(v => `<div class="pl-f"><span>${v.hora || ''} · ${esc(v.cliente)}${p === 'transferencia' && v.banco ? ' · ' + esc(v.banco) : ''}${p !== 'efectivo' && !v.comprobante ? ' · <i>sin foto</i>' : ''}</span><span class="n">${money(v.total)}</span></div>`).join('') : '<div class="pl-f muted">Sin ventas</div>'}</details>`;
   }).join('');
 }
-const lineasFuerte = o => (o.fuerteIn ? `<div class="kv"><span>Sacado de la caja fuerte</span><span class="n">+${money(o.fuerteIn)}</span></div>` : '')
-  + (o.fuerteOut ? `<div class="kv"><span>Devuelto a la caja fuerte</span><span class="n">-${money(o.fuerteOut)}</span></div>` : '')
+const lineasFuerte = o => (o.fuerteIn ? `<div class="kv"><span>Sacado de la caja chica para vuelto</span><span class="n">+${money(o.fuerteIn)}</span></div>` : '')
+  + (o.fuerteOut ? `<div class="kv"><span>Devuelto a la caja chica</span><span class="n">-${money(o.fuerteOut)}</span></div>` : '')
   + (o.chicaIn ? `<div class="kv"><span>Préstamos que entraron a la caja</span><span class="n">+${money(o.chicaIn)}</span></div>` : '')
   + (o.chicaOut ? `<div class="kv"><span>Préstamos pagados con la caja</span><span class="n">-${money(o.chicaOut)}</span></div>` : '')
   + (o.egresos ? `<div class="kv"><span>Egresos pagados con la caja</span><span class="n">-${money(o.egresos)}</span></div>` : '');
@@ -1673,7 +1676,7 @@ function abrirCierre(t, forzado){
     ${o.garDev ? `<div class="kv"><span>Garantías devueltas (efectivo)</span><span class="n">-${money(o.garDev)}</span></div>` : ''}
     ${lineasFuerte(o)}
     <div class="kv b"><span>Debe haber en caja (efectivo)</span><span class="n">${money(o.esperado)}</span></div>
-    ${o.prestamoPend ? `<div class="cuadre">Faltan devolver ${money(o.prestamoPend)} a la caja fuerte</div>` : ''}
+    ${o.prestamoPend ? `<div class="cuadre">Faltan devolver ${money(o.prestamoPend)} a la caja chica</div>` : ''}
     <div class="muted small" style="margin-top:12px">Toque cada forma de pago para ver la lista:</div>
     ${listaPorPago(t)}`;
   $('#cierre-contado').value = ''; $('#cierre-dif').textContent = '';
@@ -1714,12 +1717,12 @@ function mostrarCajaCerrada(t, o, despues){
     <div class="kv"><span>Deuna (${nD})</span><span class="n">${money(o.deuna)}</span></div>
     <div class="kv b"><span>Total vendido</span><span class="n">${money(o.total)}</span></div>
     ${lineasFuerte(o)}
-    ${o.prestamoPend ? `<div class="cuadre">Quedaron sin devolver ${money(o.prestamoPend)} a la caja fuerte</div>` : ''}
+    ${o.prestamoPend ? `<div class="cuadre">Quedaron sin devolver ${money(o.prestamoPend)} a la caja chica</div>` : ''}
     <div class="muted small" style="margin-top:10px">El efectivo queda en la caja. Las transferencias y Deuna ya están en la cuenta del banco.</div>`;
   textoCierre = [`CIERRE DE CAJA - FIESTA FELIZ`, `${t.vendedora} · ${t.fecha} · ${t.abre} a ${t.cierra}`, '',
     `Quedó en caja (contado): ${money(t.contado)}`, `Debía haber: ${money(o.esperado)} · ${textoDif(o.diferencia)}`, '',
     `Efectivo: ${money(o.efectivo)}`, `Transferencias (${nT}): ${money(o.transferencia)}`, `Deuna (${nD}): ${money(o.deuna)}`, `Total vendido: ${money(o.total)}`,
-    ...(o.fuerteIn || o.fuerteOut ? [`Caja fuerte: sacado ${money(o.fuerteIn)} · devuelto ${money(o.fuerteOut)}`] : []),
+    ...(o.fuerteIn || o.fuerteOut ? [`Caja chica para vuelto: sacado ${money(o.fuerteIn)} · devuelto ${money(o.fuerteOut)}`] : []),
     ...(o.chicaIn || o.chicaOut ? [`Préstamos con la caja: entró ${money(o.chicaIn)} · salió ${money(o.chicaOut)}`] : []),
     ...(o.egresos ? [`Egresos pagados con la caja: ${money(o.egresos)}`] : [])].join('\n');
   $('#dlg-cierre-ok').showModal();
@@ -2377,7 +2380,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '33'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '34'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -3302,7 +3305,7 @@ function tarjetaTurno(t){
     ${o.garRec || o.garDev ? `<div class="kv"><span>Garantías (efectivo)</span><span class="n">+${money(o.garRec)} / -${money(o.garDev)}</span></div>` : ''}
     ${lineasFuerte(o)}
     <div class="kv"><span>Debe haber en caja</span><span class="n">${money(o.esperado)}</span></div>
-    ${o.prestamoPend ? `<div class="cuadre">Faltan devolver ${money(o.prestamoPend)} a la caja fuerte</div>` : ''}
+    ${o.prestamoPend ? `<div class="cuadre">Faltan devolver ${money(o.prestamoPend)} a la caja chica</div>` : ''}
     ${listaPorPago(t)}
     ${abierta ? `<button class="btn soft sm block" data-cerrar="${esc(t.id)}" style="margin-top:8px">${ic('lock')}Cerrar esta caja</button>`
       : `<div class="kv"><span>Efectivo contado</span><span class="n">${money(t.contado)}</span></div><div class="cuadre">${textoDif(o.diferencia)}</div>`}
@@ -3337,9 +3340,6 @@ function renderDiario(){
       <div class="kv"><span>Deuna</span><span class="n">${money(so.deuna)}</span></div><div class="kv b"><span>Total</span><span class="n">${money(so.total)}</span></div></div>` : ''))
     || '<div class="card empty">No hubo turnos ni ventas este día</div>';
   $('#r-cierre').innerHTML = tablaVendedoras(vs);
-  const mf = movsFuerte().filter(m => m.fecha === f);
-  $('#r-fuerte').innerHTML = `<div class="kv b"><span>Debería haber ahora</span><span class="n">${money(saldoFuerte())}</span></div>`
-    + (mf.map(filaMov).join('') || '<div class="muted small">Sin movimientos este día</div>');
   const me = movsEgreso().filter(m => m.fecha === f);
   $('#r-egresos').innerHTML = me.length ? me.map(m => `<div style="position:relative">${filaEgreso(m)}</div><button class="btn ghost sm" data-borrar-eg="${esc(m.id)}" style="margin:-4px 0 6px">${ic('trash')}Borrar</button>`).join('')
       + `<div class="kv b"><span>Total egresos</span><span class="n">${money(me.reduce((a, m) => a + m.monto, 0))}</span></div>`
@@ -3362,7 +3362,6 @@ function renderDiario(){
     ...(me.length ? ['', `EGRESOS: ${money(me.reduce((a, m) => a + m.monto, 0))}`, ...me.map(m => `- ${m.concepto} (${m.categoria}): ${money(m.monto)}`)] : [])].join('\n');
 }
 $('#btn-ver-fotos').onclick = () => verComprobantesDelDia($('#r-fecha').value);
-$('#btn-fuerte-r').onclick = abrirFuerte;
 $('#btn-chica-r').onclick = abrirChica;
 $('#btn-egreso-r').onclick = abrirEgreso;
 $('#r-egresos').addEventListener('click', e => { const b = e.target.closest('[data-borrar-eg]'); if (b) borrarEgreso(b.dataset.borrarEg); });
@@ -3578,12 +3577,14 @@ $('#f-ok').onclick = () => {
 };
 
 /* ================= Caja chica: préstamos que damos y que nos dan ================= */
-const MOV_CHICA = { presto: 'Le prestamos a', cobro: 'Nos devolvió', recibo: 'Nos prestó', pago: 'Le devolvimos a', deposito: 'Guardó dinero en la caja chica', retiro: 'Sacó dinero de la caja chica' };
-const ENTRA_CHICA = new Set(['cobro', 'recibo', 'deposito']);
+const MOV_CHICA = { presto: 'Le prestamos a', cobro: 'Nos devolvió', recibo: 'Nos prestó', pago: 'Le devolvimos a', deposito: 'Guardó dinero en la caja chica', retiro: 'Sacó dinero de la caja chica',
+  'a-caja': 'Sacó de la caja chica para la caja de ventas', 'a-chica': 'Devolvió a la caja chica' };
+const ENTRA_CHICA = new Set(['cobro', 'recibo', 'deposito', 'a-chica']);
+const CON_CAJA = new Set(['a-caja', 'a-chica']); // pasan dinero entre la caja chica y la caja de ventas
 const CON_PERSONA = new Set(['presto', 'cobro', 'recibo', 'pago']);
 const movsChica = () => (db.movimientos || []).filter(m => m.tipo === 'chica');
 /** Lo que debería haber en la caja chica (sin contar lo que se movió con la caja de ventas) */
-const saldoChica = () => r2(movsChica().filter(m => m.origen !== 'caja').reduce((a, m) => a + (ENTRA_CHICA.has(m.mov) ? m.monto : -m.monto), 0)
+const saldoChica = () => r2(movsChica().filter(m => m.origen !== 'caja' || CON_CAJA.has(m.mov)).reduce((a, m) => a + (ENTRA_CHICA.has(m.mov) ? m.monto : -m.monto), 0)
   - movsEgreso().filter(m => m.origen === 'chica').reduce((a, m) => a + m.monto, 0));
 /** Quién nos debe y a quién le debemos */
 function deudasChica(){
@@ -3597,7 +3598,7 @@ function deudasChica(){
   return Object.values(p).map(o => ({ ...o, nosDebe: r2(o.nosDebe), debemos: r2(o.debemos) }));
 }
 const textoMovChica = m => CON_PERSONA.has(m.mov) && m.persona ? `${MOV_CHICA[m.mov]} ${m.persona}` : MOV_CHICA[m.mov] || m.mov;
-const filaChica = m => `<div class="mov"><span>${esc(textoMovChica(m))}<small>${m.fecha === hoy() ? '' : m.fecha + ' '}${m.hora || ''} · ${esc(m.quien || '')} · ${m.origen === 'caja' ? 'caja de ventas' : 'caja chica'}${m.nota ? ' · ' + esc(m.nota) : ''}</small></span><b class="n">${ENTRA_CHICA.has(m.mov) ? '+' : '-'}${money(m.monto)}</b></div>`;
+const filaChica = m => `<div class="mov"><span>${esc(textoMovChica(m))}<small>${m.fecha === hoy() ? '' : m.fecha + ' '}${m.hora || ''} · ${esc(m.quien || '')} · ${CON_CAJA.has(m.mov) ? 'entre cajas' : m.origen === 'caja' ? 'caja de ventas' : 'caja chica'}${m.nota ? ' · ' + esc(m.nota) : ''}</small></span><b class="n">${ENTRA_CHICA.has(m.mov) ? '+' : '-'}${money(m.monto)}</b></div>`;
 let movChica = 'presto', origenChica = 'chica';
 function abrirChica(){
   if (!usuario) return;
@@ -3615,6 +3616,13 @@ function pintarChica(){
   $('#ch-tipo').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === movChica));
   const conPersona = CON_PERSONA.has(movChica);
   $('#ch-persona-f').hidden = !conPersona; $('#ch-origen-f').hidden = !conPersona;
+  // Nombres rápidos: las vendedoras y quienes ya tienen préstamos
+  const nombres = [...new Set([...db.usuarios.filter(u => u.rol === 'vendedora' && !u.prueba).map(u => u.nombre), ...ds.map(o => o.nombre)])];
+  const pv = clave($('#ch-persona').value);
+  const pri = n => n.split(' ')[0], corto = n => nombres.filter(x => clave(pri(x)) === clave(pri(n))).length > 1 ? n : pri(n);
+  $('#ch-personas').innerHTML = nombres.map(n => `<button type="button" data-n="${esc(n)}"${clave(n) === pv ? ' class="on"' : ''}>${esc(corto(n))}</button>`).join('');
+  const mv = parseFloat($('#ch-monto').value);
+  $('#ch-montos').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === mv));
   $('#ch-origen-lbl').textContent = ENTRA_CHICA.has(movChica) ? '¿A dónde entra el dinero?' : '¿De dónde sale el dinero?';
   $('#ch-origen').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.o === origenChica));
   $('#ch-nota').placeholder = movChica === 'retiro' ? 'Obligatorio: para qué se sacó' : 'Opcional';
@@ -3623,6 +3631,9 @@ function pintarChica(){
 }
 $('#ch-tipo').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { movChica = b.dataset.m; pintarChica(); } });
 $('#ch-origen').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { origenChica = b.dataset.o; pintarChica(); } });
+$('#ch-personas').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('#ch-persona').value = b.dataset.n; pintarChica(); } });
+$('#ch-montos').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { $('#ch-monto').value = (+b.dataset.v).toFixed(2); pintarChica(); } });
+$('#ch-persona').addEventListener('input', () => $('#ch-personas').querySelectorAll('button').forEach(b => b.classList.toggle('on', clave(b.dataset.n) === clave($('#ch-persona').value))));
 $('#ch-deudas').addEventListener('click', e => {
   const b = e.target.closest('.deuda'); if (!b) return;
   movChica = b.dataset.cobrar ? 'cobro' : 'pago';
@@ -3631,17 +3642,18 @@ $('#ch-deudas').addEventListener('click', e => {
 });
 $('#ch-ok').onclick = () => {
   const mov = movChica, monto = r2(parseFloat($('#ch-monto').value) || 0), nota = $('#ch-nota').value.trim();
-  const conPersona = CON_PERSONA.has(mov), persona = conPersona ? titulo($('#ch-persona').value) : '', origen = conPersona ? origenChica : 'chica';
+  const conPersona = CON_PERSONA.has(mov), persona = conPersona ? titulo($('#ch-persona').value) : '', origen = CON_CAJA.has(mov) ? 'caja' : conPersona ? origenChica : 'chica';
   if (conPersona && !persona) return toast('Escriba el nombre de la persona');
   if (!(monto > 0)) return toast('Escriba el monto');
   if ((mov === 'deposito' || mov === 'retiro') && !esAdmin()) return toast('Solo un administrador puede hacer eso');
   if (mov === 'retiro' && !nota) return toast('Escriba para qué se sacó el dinero');
   const t = origen === 'caja' ? cajaParaFuerte() : null;
   if (origen === 'caja' && !t) return toast('No hay una caja de ventas abierta');
+  if (mov === 'a-chica' && monto > resumenTurno(t).esperado && !confirm(`En la caja de ventas debería haber ${money(resumenTurno(t).esperado)}. ¿Registrar igual ${money(monto)}?`)) return;
   const d = deudasChica().find(o => clave(o.nombre) === clave(persona));
   if (mov === 'cobro' && monto > (d?.nosDebe || 0) && !confirm(`${persona} nos debe ${money(d?.nosDebe || 0)}. ¿Registrar igual ${money(monto)}?`)) return;
   if (mov === 'pago' && monto > (d?.debemos || 0) && !confirm(`Le debemos ${money(d?.debemos || 0)} a ${persona}. ¿Registrar igual ${money(monto)}?`)) return;
-  if (!ENTRA_CHICA.has(mov) && origen === 'chica' && monto > saldoChica() && !confirm(`En la caja chica debería haber ${money(saldoChica())}. ¿Registrar igual ${money(monto)}?`)) return;
+  if (!ENTRA_CHICA.has(mov) && (origen === 'chica' || mov === 'a-caja') && monto > saldoChica() && !confirm(`En la caja chica debería haber ${money(saldoChica())}. ¿Registrar igual ${money(monto)}?`)) return;
   const m = { id: db.dev + '-C' + Date.now().toString(36), tipo: 'chica', mov, persona, monto, origen, pago: 'efectivo', nota, turnoId: t?.id || null,
               fecha: hoy(), hora: horaAhora(), ts: Date.now(), quien: usuario.nombre, quienId: usuario.id };
   (db.movimientos ||= []).push(m); save(); encolar('movimiento', m);
@@ -3768,8 +3780,8 @@ $('#btn-mias').onclick = () => {
       <div class="kv"><span>Efectivo vendido</span><span class="n">${money(o2.efectivo)}</span></div>
       ${lineasFuerte(o2)}
       <div class="kv b"><span>Debe haber en caja</span><span class="n">${money(o2.esperado)}</span></div>
-      ${o2.prestamoPend ? `<div class="cuadre">Falta devolver ${money(o2.prestamoPend)} a la caja fuerte</div>` : ''}
-      <div class="row" style="margin-top:10px"><button class="btn soft" id="btn-fuerte">${ic('boveda')}Caja fuerte</button><button class="btn soft" id="btn-chica">${ic('cash')}Caja chica</button></div>
+      ${o2.prestamoPend ? `<div class="cuadre">Falta devolver ${money(o2.prestamoPend)} a la caja chica</div>` : ''}
+      <button class="btn soft block" id="btn-chica" style="margin-top:10px">${ic('cash')}Caja chica: préstamos y vuelto</button>
       <button class="btn soft block" id="btn-egreso" style="margin-top:8px">${ic('bajada')}Registrar egreso (pago con la caja)</button>
       <button class="btn pri block" id="btn-cerrar-caja" style="margin-top:8px">${ic('lock')}Cerrar mi caja</button></div>`; })() : ''}
     ${vs.length ? '<div class="muted small" style="margin-bottom:4px">Toque una venta para ver el detalle</div>' : ''}
@@ -3778,7 +3790,6 @@ $('#btn-mias').onclick = () => {
 };
 $('#mias-b').addEventListener('click', e => {
   if (e.target.closest('#btn-cerrar-caja')) { $('#dlg-mias').close(); return abrirCierre(turno); }
-  if (e.target.closest('#btn-fuerte')) { $('#dlg-mias').close(); return abrirFuerte(); }
   if (e.target.closest('#btn-chica')) { $('#dlg-mias').close(); return abrirChica(); }
   if (e.target.closest('#btn-egreso')) { $('#dlg-mias').close(); return abrirEgreso(); }
   const l = e.target.closest('[data-u]'); if (!l) return;
