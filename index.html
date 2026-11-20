@@ -1515,7 +1515,7 @@ async function validarPin(){
   if (!u) return rechazarPin('PIN incorrecto');
   if (u.rol === 'vendedora' && !dentroHorario() && !turnoAbierto(u))
     return rechazarPin(`Fuera de horario. Se puede usar de ${horario().abre} a ${horario().cierra}`);
-  if (u.rol !== 'vendedora' || !ubicacionLocal().activo) return entrar(u);
+  if (u.rol !== 'vendedora' || !ubicacionLocal().activo || ubicacionReciente()) return entrar(u);
   // Vendedora: debe estar en el local
   verificando = true; $('#lock-msg').textContent = 'Verificando ubicación…';
   verificarUbicacion().then(r => { verificando = false; r.ok ? entrar(u) : rechazarPin(r.msg); });
@@ -1524,6 +1524,13 @@ async function validarPin(){
 /* ================= Ubicación del local (solo para vendedoras) ================= */
 const LOCAL_DEF = { lat: -0.2930573, lng: -78.4778414, radio: 100, activo: true }; // La Fiesta Feliz (Google Maps)
 const ubicacionLocal = () => ({ ...LOCAL_DEF, ...(db.ubicacion || {}) });
+/* Ubicación recordada: si se confirmó que el teléfono está en el local hace menos de 30 minutos, al volver
+   a poner el PIN no se busca el GPS otra vez. Se olvida al cerrar la caja o si la revisión de cada 5 minutos
+   detecta que salió del local. */
+const UBIC_OK = 'fiestaFeliz.ubicOk', UBIC_MIN = 30;
+const ubicacionReciente = () => { try { return Date.now() - (+localStorage.getItem(UBIC_OK) || 0) < UBIC_MIN * 60000; } catch { return false; } };
+const recordarUbicacion = () => { try { localStorage.setItem(UBIC_OK, String(Date.now())); } catch {} };
+const olvidarUbicacion = () => { try { localStorage.removeItem(UBIC_OK); } catch {} };
 function distanciaM(a, b){
   const R = 6371000, rad = x => x * Math.PI / 180;
   const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
@@ -1533,7 +1540,7 @@ function distanciaM(a, b){
 function obtenerPosicion(){
   return new Promise((ok, mal) => {
     if (!navigator.geolocation) return mal({ code: 0 });
-    navigator.geolocation.getCurrentPosition(p => ok(p.coords), mal, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    navigator.geolocation.getCurrentPosition(p => ok(p.coords), mal, { enableHighAccuracy: true, timeout: 15000, maximumAge: 180000 });
   });
 }
 async function verificarUbicacion(){
@@ -1544,6 +1551,7 @@ async function verificarUbicacion(){
     const d = distanciaM({ lat: c.latitude, lng: c.longitude }, L);
     if (c.accuracy > 200) return { ok: false, msg: 'Ubicación poco precisa. Active el GPS y vuelva a intentar.' };
     if (d > L.radio + Math.min(c.accuracy, 30)) return { ok: false, msg: `Debe estar en el local para ingresar (está a ${d >= 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m'}).` };
+    recordarUbicacion();
     return { ok: true, d };
   } catch (e) {
     return { ok: false, msg: e.code === 1 ? 'Permita el acceso a la ubicación para ingresar.' : 'No se pudo obtener la ubicación. Active el GPS e intente de nuevo.' };
@@ -1553,6 +1561,7 @@ async function verificarUbicacion(){
 setInterval(async () => {
   if (!usuario || usuario.rol !== 'vendedora' || !ubicacionLocal().activo) return;
   const r = await verificarUbicacion();
+  if (!r.ok) olvidarUbicacion();
   if (!r.ok && usuario?.rol === 'vendedora') { bloquear(); $('#lock-msg').textContent = r.msg; }
 }, 5 * 60000);
 function entrar(u){
@@ -1682,6 +1691,7 @@ $('#cierre-ok').onclick = () => {
   const t = turnoCierre;
   const propia = usuario && t.usuarioId === usuario.id;
   t.contado = r2(c);
+  if (propia) olvidarUbicacion();
   if (propia || !t.cierra) { t.cierra = horaAhora(); t.fechaCierre = hoy(); t.salidaTs = Date.now(); }
   save(); encolar('turno', t);
   const o = resumenTurno(t), forzado = cierreForzado;
@@ -2366,7 +2376,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '31'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '32'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
