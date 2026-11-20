@@ -2381,7 +2381,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '36'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '37'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2833,10 +2833,11 @@ async function sincronizar(){
       const soloBajar = lsGet('fiestaFeliz.syncPrimera', false);
       const lote = soloBajar ? [] : lsGet(SYNC_COLA, []).slice(0, 200);
       const r = await fetch(API_BASE + '/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dev-Token': syncToken() },
-        body: JSON.stringify({ desde: lsGet(SYNC_CURSOR, 0), cambios: lote }) });
+        body: JSON.stringify({ desde: lsGet(SYNC_CURSOR, 0), cambios: lote, reinicio: lsGet(SYNC_REINICIO, 0) }) });
       if (r.status === 401) { errorSync = 'Este teléfono no está activado (o fue desactivado).'; return; }
       if (!r.ok) throw new Error(r.status);
       const d = await r.json();
+      if (d.reinicio && d.reinicio > lsGet(SYNC_REINICIO, 0)) reiniciarLocal(d.reinicio);
       const firma = c => c.tipo + '|' + c.id + '|' + (c.borrado ? 1 : 0) + '|' + JSON.stringify(c.data);
       const enviados = new Set(lote.map(firma));
       lsSet(SYNC_COLA, lsGet(SYNC_COLA, []).filter(c => !enviados.has(firma(c))));
@@ -2848,6 +2849,19 @@ async function sincronizar(){
     ultimaSync = Date.now(); lsSet('fiestaFeliz.syncUltima', ultimaSync); errorSync = '';
   } catch { errorSync = navigator.onLine ? 'No se pudo sincronizar; se reintenta solo.' : 'Sin internet: se enviará al volver la señal.'; }
   finally { sincronizando = false; pintarSync(); }
+}
+/* El administrador empezó de cero: este teléfono borra sus ventas, turnos, movimientos, avisos y clientes
+   (también las ventas de ejemplo y las que nunca se enviaron). Productos, usuarios y ajustes se conservan. */
+const SYNC_REINICIO = 'fiestaFeliz.reinicio';
+const BORRABLES_SYNC = new Set(['venta', 'turno', 'movimiento', 'aviso', 'cliente']);
+function reiniciarLocal(marca){
+  db.ventas = []; db.turnos = []; db.movimientos = []; db.avisos = []; db.clientes = [];
+  lsSet(SYNC_COLA, lsGet(SYNC_COLA, []).filter(c => !BORRABLES_SYNC.has(c.tipo)));
+  lsSet(SYNC_REINICIO, marca);
+  carrito = []; descuento = 0; turno = null;
+  recalcularUsos(); save();
+  if (typeof renderGrid === 'function') renderGrid();
+  if (usuario) { bloquear('Se reinició el sistema: ingrese de nuevo su PIN'); }
 }
 /** Mezcla lo que llega del servidor. Se actualiza el mismo objeto (no se reemplaza) para no romper referencias como el turno abierto. */
 function aplicarRemotos(regs){

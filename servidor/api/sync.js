@@ -7,13 +7,15 @@ const { Pool } = require('pg');
 
 const TIPOS = new Set(['venta', 'turno', 'movimiento', 'cliente', 'producto', 'usuario', 'ajuste', 'aviso']);
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+// Lo que se borra al "empezar de cero" (productos, usuarios y ajustes se conservan)
+const BORRABLES = ['venta', 'turno', 'movimiento', 'aviso', 'cliente'];
 
 module.exports = function crearSync({ json, leerCuerpo, igual }) {
   const { DATABASE_URL } = process.env;
   if (!DATABASE_URL) { console.log('Sin DATABASE_URL: la sincronización está apagada'); return { iniciar: async () => {}, rutas: async () => false }; }
   const pool = new Pool({ connectionString: DATABASE_URL, max: 8 });
   pool.on('error', e => console.error('PostgreSQL:', e.message));
-  let tokens = new Map(), listo = false;
+  let tokens = new Map(), listo = false, reinicio = 0;
 
   async function iniciar() {
     for (let i = 0; i < 40; i++) {
@@ -28,7 +30,10 @@ module.exports = function crearSync({ json, leerCuerpo, igual }) {
           CREATE INDEX IF NOT EXISTS registros_version_idx ON registros (version);
           CREATE INDEX IF NOT EXISTS registros_tipo_fecha_idx ON registros (tipo, fecha);
           CREATE TABLE IF NOT EXISTS dispositivos_token (
-            token text PRIMARY KEY, dev text NOT NULL, nombre text, creado timestamptz NOT NULL DEFAULT now(), activo boolean NOT NULL DEFAULT true);`);
+            token text PRIMARY KEY, dev text NOT NULL, nombre text, creado timestamptz NOT NULL DEFAULT now(), activo boolean NOT NULL DEFAULT true);
+          CREATE TABLE IF NOT EXISTS config (k text PRIMARY KEY, v text NOT NULL);`);
+        const c = await pool.query(`SELECT v FROM config WHERE k = 'reinicio'`);
+        reinicio = c.rows.length ? Number(c.rows[0].v) || 0 : 0;
         await cargarTokens(); listo = true;
         console.log('Base de datos lista'); return;
       } catch (e) { console.log('Esperando a PostgreSQL…', e.message); await new Promise(r => setTimeout(r, 3000)); }
@@ -78,13 +83,17 @@ module.exports = function crearSync({ json, leerCuerpo, igual }) {
       // Productos, usuarios y ajustes se conservan. Se marcan como borrados para que cada teléfono los quite.
       if (req.method === 'POST' && ruta === '/api/sync/vaciar') {
         if (!esAdmin) { json(res, 401, { error: 'solo el administrador' }); return true; }
-        const permitidos = ['venta', 'turno', 'movimiento', 'aviso', 'cliente'];
-        const pedidos = (await cuerpo()).tipos, tipos = Array.isArray(pedidos) ? pedidos.filter(x => permitidos.includes(x)) : [];
+        const pedido = await cuerpo(), tipos = Array.isArray(pedido.tipos) ? pedido.tipos.filter(x => BORRABLES.includes(x)) : [];
         if (!tipos.length) { json(res, 400, { error: 'faltan los tipos' }); return true; }
+        // Reinicio total: además cada teléfono borra su propia copia (incluidas ventas que nunca se enviaron)
+        if (pedido.reiniciarTelefonos) {
+          reinicio = Date.now();
+          await pool.query(`INSERT INTO config (k, v) VALUES ('reinicio', $1) ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v`, [String(reinicio)]);
+        }
         const r = await pool.query(`UPDATE registros SET borrado = true, data = '{}'::jsonb, version = nextval('registros_version'), actualizado = now()
           WHERE tipo = ANY($1) AND NOT borrado RETURNING tipo`, [tipos]);
         const n = {}; r.rows.forEach(x => { n[x.tipo] = (n[x.tipo] || 0) + 1; });
-        json(res, 200, { borrados: n }); return true;
+        json(res, 200, { borrados: n, reinicio }); return true;
       }
 
       // Sincronizar: recibe cambios del teléfono y le devuelve lo nuevo de todos
@@ -92,7 +101,9 @@ module.exports = function crearSync({ json, leerCuerpo, igual }) {
         const disp = dispositivoDe(req);
         if (!disp) { json(res, 401, { error: 'teléfono no activado' }); return true; }
         const d = await cuerpo();
-        const cambios = Array.isArray(d.cambios) ? d.cambios.slice(0, 500) : [];
+        // Un teléfono que aún no se enteró del reinicio no puede volver a subir lo que se borró
+        const atrasado = reinicio && (Number(d.reinicio) || 0) < reinicio;
+        const cambios = (Array.isArray(d.cambios) ? d.cambios.slice(0, 500) : []).filter(c => !(atrasado && BORRABLES.includes(String(c.tipo))));
         let guardados = 0;
         if (cambios.length) {
           const cli = await pool.connect();
@@ -119,7 +130,7 @@ module.exports = function crearSync({ json, leerCuerpo, igual }) {
         const desde = Math.max(0, parseInt(d.desde, 10) || 0);
         const r = await pool.query('SELECT tipo, id, data, borrado, version FROM registros WHERE version > $1 ORDER BY version LIMIT 1000', [desde]);
         const cursor = r.rows.length ? Number(r.rows[r.rows.length - 1].version) : desde;
-        json(res, 200, { guardados, cursor, mas: r.rows.length === 1000, registros: r.rows.map(x => ({ tipo: x.tipo, id: x.id, data: x.data, borrado: x.borrado })) });
+        json(res, 200, { guardados, cursor, reinicio, mas: r.rows.length === 1000, registros: r.rows.map(x => ({ tipo: x.tipo, id: x.id, data: x.data, borrado: x.borrado })) });
         return true;
       }
       json(res, 404, { error: 'no encontrado' }); return true;
