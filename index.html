@@ -1452,7 +1452,8 @@ function minutosEcuador(){
 const hoyEcuador = () => new Intl.DateTimeFormat('en-CA', { timeZone: ZONA }).format(new Date()); // AAAA-MM-DD
 /** Horario extendido: el administrador lo activa para el día; vence solo a las 12:00 am (hora Ecuador). */
 const extensionActiva = () => db.extension?.fecha === hoyEcuador();
-const dentroHorario = () => { if (extensionActiva()) return true; const m = minutosEcuador(); return m >= aMin(horario().abre) && m < aMin(horario().cierra); };
+// Usuario de prueba (prueba: true): puede entrar desde cualquier lugar y a cualquier hora, para revisar la app
+const dentroHorario = () => { if (extensionActiva() || usuario?.prueba) return true; const m = minutosEcuador(); return m >= aMin(horario().abre) && m < aMin(horario().cierra); };
 let avisoCierre = false;
 setInterval(() => {
   if (!usuario || usuario.rol !== 'vendedora') return;
@@ -1513,9 +1514,9 @@ async function validarPin(){
   const u = await usuarioPorPin(pinBuf);
   verificando = false;
   if (!u) return rechazarPin('PIN incorrecto');
-  if (u.rol === 'vendedora' && !dentroHorario() && !turnoAbierto(u))
+  if (u.rol === 'vendedora' && !u.prueba && !dentroHorario() && !turnoAbierto(u))
     return rechazarPin(`Fuera de horario. Se puede usar de ${horario().abre} a ${horario().cierra}`);
-  if (u.rol !== 'vendedora' || !ubicacionLocal().activo || ubicacionReciente()) return entrar(u);
+  if (u.rol !== 'vendedora' || u.prueba || !ubicacionLocal().activo || ubicacionReciente()) return entrar(u);
   // Vendedora: debe estar en el local
   verificando = true; $('#lock-msg').textContent = 'Verificando ubicación…';
   verificarUbicacion().then(r => { verificando = false; r.ok ? entrar(u) : rechazarPin(r.msg); });
@@ -1559,7 +1560,7 @@ async function verificarUbicacion(){
 }
 // Cada 5 minutos: si la vendedora salió del local, se bloquea (su caja queda abierta para cuando regrese)
 setInterval(async () => {
-  if (!usuario || usuario.rol !== 'vendedora' || !ubicacionLocal().activo) return;
+  if (!usuario || usuario.rol !== 'vendedora' || usuario.prueba || !ubicacionLocal().activo) return;
   const r = await verificarUbicacion();
   if (!r.ok) olvidarUbicacion();
   if (!r.ok && usuario?.rol === 'vendedora') { bloquear(); $('#lock-msg').textContent = r.msg; }
@@ -2376,7 +2377,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '32'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '33'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2793,7 +2794,7 @@ function encolarRaw(tipo, id, data, borrado, fecha){
 /* Catálogo, usuarios y ajustes: se detectan los cambios comparando con la última versión enviada/recibida ("foto") */
 const SYNC_SNAP = 'fiestaFeliz.syncSnap';
 const datosProducto = p => ({ nombre: p.nombre, precio: p.precio > 0 ? p.precio : null, categoria: p.categoria || '', sub: p.sub || '', variable: !!p.variable, fijo: !!p.fijo });
-const datosUsuario = u => ({ id: u.id, nombre: u.nombre, rol: u.rol, sal: u.sal, pinHash: u.pinHash });
+const datosUsuario = u => ({ id: u.id, nombre: u.nombre, rol: u.rol, sal: u.sal, pinHash: u.pinHash, ...(u.prueba ? { prueba: true } : {}) });
 const datosAjustes = () => ({ iva: db.iva, horario: db.horario || null, extension: db.extension || null, ubicacion: db.ubicacion || null, voz: db.voz !== false, bloqueoAlSalir: db.bloqueoAlSalir !== false });
 function registrosConfig(){
   const out = [];
