@@ -1607,6 +1607,7 @@ setInterval(async () => {
 function entrar(u){
   // misma persona que dejó la app bloqueada: conserva su venta; otra persona: empieza de cero
   if ((usuario?.id || ultimoUsuarioId) !== u.id && carrito.length) { carrito = []; descuento = 0; fotoComp = null; pintarFoto(); limpiarCliente(); }
+  const autoCerradas = autoCerrarCajas();
   usuario = u; turno = null;
   $('#lock').hidden = true;
   document.body.classList.toggle('vend', !esAdmin());
@@ -1628,6 +1629,8 @@ function entrar(u){
   if (t && !dentroHorario()) { turno = t; toast('Fuera de horario: solo puede cerrar su caja'); return abrirCierre(t, 'horario'); }
   if (t && t.fecha !== hoy()) { turno = t; toast(`Tiene una caja abierta del ${t.fecha}. Ciérrela primero.`); return abrirCierre(t, true); }
   if (t) { turno = t; return toast(`Hola, ${nom} · caja abierta desde las ${t.abre}`); }
+  const suya = autoCerradas.find(x => x.usuarioId === u.id);
+  if (suya) toast(`Su caja del ${suya.fecha} se cerró sola a las ${suya.cierra}. Abra la de hoy.`);
   pedirCajaInicial();
 }
 
@@ -1686,6 +1689,38 @@ $('#abrir-ok').onclick = () => {
   $('#dlg-abrir').close();
   toast(`Entrada marcada a las ${turno.abre} · caja con ${money(monto)}`);
 };
+/* Cierre automático: toda caja que siga abierta pasadas las 10 de la noche (hora Ecuador) se cierra sola,
+   sin contar el efectivo. Si el administrador extendió el horario, se cierra al cambiar el día.
+   Así al día siguiente cada vendedora puede abrir su caja sin tener que cerrar la de ayer.
+   El administrador recibe un aviso y luego puede registrar el efectivo contado desde Reportes. */
+const HORA_AUTOCIERRE = '22:00';
+function autoCerrarCajas(){
+  const hoyE = hoyEcuador(), m = minutosEcuador(), cerradas = [];
+  for (const t of db.turnos) {
+    if (t.cierra) continue;
+    const vencida = t.fecha < hoyE || (t.fecha === hoyE && m >= aMin(HORA_AUTOCIERRE) && !extensionActiva());
+    if (!vencida) continue;
+    const limite = new Date(`${t.fecha}T${HORA_AUTOCIERRE}:00-05:00`).getTime(), salida = Math.max(limite, entradaTs(t));
+    Object.assign(t, { cierra: salida === limite ? HORA_AUTOCIERRE : t.abre, fechaCierre: t.fecha, salidaTs: salida, contado: null, autoCerrada: true });
+    encolar('turno', t);
+    const o = resumenTurno(t);
+    const a = { id: 'auto-' + t.id, tipo: 'caja-auto', fecha: hoyE, hora: horaAhora(), ts: Date.now(), quien: 'Sistema', quienId: 'sistema', rol: 'sistema', turnoId: t.id,
+      detalle: `La caja de ${t.vendedora} del ${t.fecha} (desde las ${t.abre}) se cerró sola a las ${t.cierra} sin contar el efectivo. Debía haber ${money(o.esperado)} · vendió ${money(o.total)}.`,
+      motivo: '', monto: o.esperado };
+    if (!(db.avisos ||= []).some(x => x.id === a.id)) { db.avisos.push(a); encolar('aviso', a); }
+    if (turno === t) turno = null;
+    cerradas.push(t);
+  }
+  if (cerradas.length) {
+    save();
+    if (typeof pintarCampana === 'function') pintarCampana();
+    if (tabActual === 'reportes') renderReportes();
+    // la vendedora que estaba usando la app con esa caja: vuelve a ingresar y abre una nueva
+    if (usuario?.rol === 'vendedora' && cerradas.some(t => t.usuarioId === usuario.id)) bloquear('Su caja se cerró sola a las 10 de la noche. Ingrese su PIN');
+  }
+  return cerradas;
+}
+setInterval(autoCerrarCajas, 60000);
 let turnoCierre = null, cierreForzado = false;
 /** Ventas del turno agrupadas por forma de pago (para revisar al cerrar) */
 function listaPorPago(t){
@@ -2461,7 +2496,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '41'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '42'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -2923,6 +2958,7 @@ async function sincronizar(){
       lsSet(SYNC_COLA, lsGet(SYNC_COLA, []).filter(c => !enviados.has(firma(c))));
       aplicarRemotos(d.registros || []);
       lsSet(SYNC_CURSOR, d.cursor);
+      if ((d.registros || []).some(x => x.tipo === 'turno')) autoCerrarCajas();
       if (soloBajar && !d.mas) { lsSet('fiestaFeliz.syncPrimera', false); detectarCambios(); continue; }
       if (!d.mas && !lsGet(SYNC_COLA, []).length) break;
     }
@@ -3409,7 +3445,7 @@ function tablaVendedoras(vs){
 function tarjetaTurno(t){
   const o = resumenTurno(t), abierta = !t.cierra;
   return `<div class="card turno">
-    <div class="th"><b>${esc(t.vendedora)}</b><span class="estado${abierta ? ' abierta' : ''}">${abierta ? 'Caja abierta' : 'Cerrada'}</span></div>
+    <div class="th"><b>${esc(t.vendedora)}</b><span class="estado${abierta ? ' abierta' : ''}">${abierta ? 'Caja abierta' : t.autoCerrada ? 'Cerrada sola' : 'Cerrada'}</span></div>
     <div class="muted small" style="margin-bottom:6px">Entrada ${t.abre} · Salida ${t.cierra || 'pendiente'} · ${o.n} venta(s)${t.horasCorregidas ? ' · horario corregido' : ''}</div>
     <div class="kv" style="font-weight:700"><span>Horas trabajadas${t.cierra ? '' : ' (en curso)'}</span><span class="n">${fmtHoras(msTrabajados(t))}</span></div>
     <div class="kv"><span>Caja inicial</span><span class="n">${money(t.cajaInicial)}</span></div>
@@ -3423,6 +3459,7 @@ function tarjetaTurno(t){
     ${o.prestamoPend ? `<div class="cuadre">Faltan devolver ${money(o.prestamoPend)} a la caja chica</div>` : ''}
     ${listaPorPago(t)}
     ${abierta ? `<button class="btn soft sm block" data-cerrar="${esc(t.id)}" style="margin-top:8px">${ic('lock')}Cerrar esta caja</button>`
+      : t.contado == null ? `<div class="cuadre">Se cerró sola a las ${t.cierra} sin contar el efectivo</div><button class="btn soft sm block" data-cerrar="${esc(t.id)}" style="margin-top:8px">${ic('cash')}Registrar efectivo contado</button>`
       : `<div class="kv"><span>Efectivo contado</span><span class="n">${money(t.contado)}</span></div><div class="cuadre">${textoDif(o.diferencia)}</div>${t.notaCierre ? `<div class="muted small" style="margin-top:4px">Nota de ${esc(t.vendedora.split(' ')[0])}: ${esc(t.notaCierre)}</div>` : ''}`}
     <button class="btn ghost sm block" data-horas="${esc(t.id)}" style="margin-top:6px">${ic('edit')}Corregir horario</button>
   </div>`;
@@ -3834,14 +3871,14 @@ function pintarCampana(){
   const n = esAdmin() ? notifNuevas().length : 0;
   b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
 }
-const TIT_AVISO = { egreso: 'registró un egreso', 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte', 'caja-chica': 'registró un préstamo (caja chica)', 'pago-cambiado': 'cambió la forma de pago de una venta', 'caja-diferencia': 'cerró su caja con diferencia' };
+const TIT_AVISO = { egreso: 'registró un egreso', 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte', 'caja-chica': 'registró un préstamo (caja chica)', 'pago-cambiado': 'cambió la forma de pago de una venta', 'caja-diferencia': 'cerró su caja con diferencia', 'caja-auto': 'cerró una caja que quedó abierta' };
 function abrirNotificaciones(){
   const nuevas = new Set(notifNuevas().map(a => a.id));
   const xs = (db.avisos || []).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 200);
   let dia = '';
   $('#notif-b').innerHTML = xs.map(a => {
     const cab = a.fecha !== dia ? `<h3 class="sec">${fechaLarga(dia = a.fecha)}</h3>` : '';
-    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : a.tipo === 'caja-chica' ? 'cash' : a.tipo === 'egreso' ? 'bajada' : a.tipo === 'pago-cambiado' ? 'transfer' : a.tipo === 'caja-diferencia' ? 'alerta' : 'boveda')}</span><div>
+    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : a.tipo === 'caja-chica' ? 'cash' : a.tipo === 'egreso' ? 'bajada' : a.tipo === 'pago-cambiado' ? 'transfer' : a.tipo === 'caja-diferencia' ? 'alerta' : a.tipo === 'caja-auto' ? 'reloj' : 'boveda')}</span><div>
       <b>${esc(a.quien)} ${TIT_AVISO[a.tipo] || ''}</b> <small>${a.hora || ''}</small>
       <p>${esc(a.detalle || '')}</p>${a.motivo ? `<p><small>Nota:</small> ${esc(a.motivo)}</p>` : ''}</div></div>`;
   }).join('') || '<div class="empty">No hay notificaciones.</div>';
@@ -4562,6 +4599,7 @@ function init(){
   db.dev ||= Math.random().toString(36).slice(2, 6).toUpperCase();
   save();
   aplicarVoz(); renderVenta(); bloquear();
+  autoCerrarCajas();
   cifrarPins().catch(() => {});
 }
 init();
