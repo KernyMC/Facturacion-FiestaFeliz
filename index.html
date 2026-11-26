@@ -411,7 +411,11 @@
   #recibo{font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.45}
   #recibo h4{text-align:center;margin:0;font-size:16px}
   #recibo .c{text-align:center}
-  #recibo table{font-size:13px}
+  #recibo{overflow-wrap:anywhere}
+  #recibo table{font-size:13px;width:100%;border-collapse:collapse}
+  #recibo td.r,#recibo th.r{white-space:nowrap;overflow-wrap:normal}
+  #recibo th:not(.r){text-align:left}
+  @media (max-width:380px){ #recibo,#recibo table{font-size:12px} #recibo td,#recibo th{padding:2px 2px} }
   #recibo td,#recibo th{padding:2px 3px;border:0}
   #recibo hr{border:0;border-top:1px dashed #9ca3af;margin:8px 0}
 
@@ -1609,6 +1613,7 @@ function entrar(u){
   setTimeout(sincronizar, 800);
   setTimeout(cargarCompras, 2000);
   if (u.rol !== 'vendedora') {
+    turno = turnoAbierto(u) || null; // el administrador puede tener su propia caja si vende
     setTimeout(() => revisarAvisos(false), 800);
     pintarCampana();
     setTimeout(() => { pintarCampana(); const n = notifNuevas().length; if (n) toast(`Tiene ${n} notificación(es) nueva(s): toque la campana`); }, 3500);
@@ -1667,7 +1672,7 @@ function pedirCajaInicial(){
   if (!$('#dlg-abrir').open) $('#dlg-abrir').showModal();
 }
 $('#dlg-abrir').addEventListener('cancel', e => e.preventDefault());
-$('#abrir-salir').onclick = () => { $('#dlg-abrir').close(); bloquear(); };
+$('#abrir-salir').onclick = () => { $('#dlg-abrir').close(); if (!esAdmin()) bloquear(); };
 $('#abrir-ok').onclick = () => {
   const monto = r2(parseFloat($('#abrir-monto').value) || 0);
   if (!monto && !confirm('¿Empieza con la caja en $0.00?')) return;
@@ -1741,7 +1746,7 @@ $('#cierre-ok').onclick = () => {
   cierreForzado = false;
   $('#dlg-cierre').close();
   if (tabActual === 'reportes') renderReportes();
-  mostrarCajaCerrada(t, o, () => { if (propia) { turno = null; if (forzado === true && dentroHorario()) pedirCajaInicial(); else bloquear(); } });
+  mostrarCajaCerrada(t, o, () => { if (propia) { turno = null; if (forzado === true && dentroHorario()) pedirCajaInicial(); else if (!esAdmin()) bloquear(); } });
 };
 let trasCierre = null, textoCierre = '';
 function mostrarCajaCerrada(t, o, despues){
@@ -2444,7 +2449,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '39'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '40'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -3928,13 +3933,17 @@ $('#btn-mias').onclick = () => {
       ${o2.prestamoPend ? `<div class="cuadre">Falta devolver ${money(o2.prestamoPend)} a la caja chica</div>` : ''}
       <button class="btn soft block" id="btn-chica" style="margin-top:10px">${ic('cash')}Caja chica: préstamos y vuelto</button>
       <button class="btn soft block" id="btn-egreso" style="margin-top:8px">${ic('bajada')}Registrar egreso (pago con la caja)</button>
-      <button class="btn pri block" id="btn-cerrar-caja" style="margin-top:8px">${ic('lock')}Cerrar mi caja</button></div>`; })() : ''}
+      <button class="btn pri block" id="btn-cerrar-caja" style="margin-top:8px">${ic('lock')}Cerrar mi caja</button></div>`; })()
+      : esAdmin() ? `<div class="card turno" style="margin-bottom:12px"><div class="th"><b>Mi caja</b><span class="estado">Sin abrir</span></div>
+      <div class="muted small">Si usted también vende, abra su caja para que sus ventas queden en su propio cierre.</div>
+      <button class="btn pri block" id="btn-abrir-caja" style="margin-top:10px">${ic('cash')}Abrir mi caja</button></div>` : ''}
     ${vs.length ? '<div class="muted small" style="margin-bottom:4px">Toque una venta para ver el detalle</div>' : ''}
     ${vs.slice().reverse().map(v => `<div class="line" data-u="${esc(v.uid || v.id)}" style="cursor:pointer"><div class="ln"><b>${esc(v.cliente)}<span class="ptag">${PAGOS[v.pago || 'efectivo']}</span></b><small>${v.hora || ''} · ${v.lineas.map(l => `${l.cant} ${esc(l.nombre)}`).join(', ')}</small></div><div class="lt n">${money(v.total)}</div><span class="muted">${ic('right')}</span></div>`).join('') || '<div class="empty">Aún no hay ventas hoy</div>'}`;
   $('#dlg-mias').showModal();
 };
 $('#mias-b').addEventListener('click', e => {
   if (e.target.closest('#btn-cerrar-caja')) { $('#dlg-mias').close(); return abrirCierre(turno); }
+  if (e.target.closest('#btn-abrir-caja')) { $('#dlg-mias').close(); return pedirCajaInicial(); }
   if (e.target.closest('#btn-chica')) { $('#dlg-mias').close(); return abrirChica(); }
   if (e.target.closest('#btn-egreso')) { $('#dlg-mias').close(); return abrirEgreso(); }
   const l = e.target.closest('[data-u]'); if (!l) return;
