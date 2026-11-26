@@ -1135,6 +1135,10 @@
     <div id="cierre-res"></div>
     <div class="fld" style="margin-top:12px"><span class="lbl">Efectivo contado en caja</span><input id="cierre-contado" class="money"></div>
     <div class="cuadre" id="cierre-dif"></div>
+    <div id="cierre-nota-f" hidden>
+      <p class="muted small" style="margin:8px 0">Puede cerrar igual con lo que contó. El administrador verá la diferencia y le preguntará.</p>
+      <div class="fld"><span class="lbl">¿Sabe por qué no cuadra? (opcional)</span><input id="cierre-nota" maxlength="160" placeholder="Ej.: di mal un vuelto, una venta era transferencia"></div>
+    </div>
   </div>
   <div class="sh-f"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="cierre-ok"><span data-ic="lock"></span>Cerrar y marcar salida</button></div>
 </dialog>
@@ -1723,15 +1727,16 @@ function abrirCierre(t, forzado){
     ${totalDiaVendedora(t)}
     <div class="muted small" style="margin-top:12px">Toque cada forma de pago para ver la lista:</div>
     ${listaPorPago(t)}`;
-  $('#cierre-contado').value = ''; $('#cierre-dif').textContent = '';
+  $('#cierre-contado').value = ''; $('#cierre-dif').textContent = ''; $('#cierre-nota').value = ''; $('#cierre-nota-f').hidden = true;
   if (!$('#dlg-cierre').open) $('#dlg-cierre').showModal();
   // Al cerrar su propia caja: recordatorio de dejar cargando los dispositivos
   if (usuario && t.usuarioId === usuario.id && !t.cierra && !$('#dlg-recordar').open) $('#dlg-recordar').showModal();
 }
 $('#recordar-ok').onclick = () => $('#dlg-recordar').close();
 $('#cierre-contado').addEventListener('input', () => {
-  const c = parseFloat($('#cierre-contado').value);
-  $('#cierre-dif').textContent = isNaN(c) ? '' : textoDif(c - resumenTurno(turnoCierre).esperado);
+  const c = parseFloat($('#cierre-contado').value), d = isNaN(c) ? 0 : c - resumenTurno(turnoCierre).esperado;
+  $('#cierre-dif').textContent = isNaN(c) ? '' : textoDif(d);
+  $('#cierre-nota-f').hidden = isNaN(c) || Math.abs(d) < 0.005;
 });
 $('#cierre-ok').onclick = () => {
   const c = parseFloat($('#cierre-contado').value);
@@ -1739,9 +1744,14 @@ $('#cierre-ok').onclick = () => {
   const t = turnoCierre;
   const propia = usuario && t.usuarioId === usuario.id;
   t.contado = r2(c);
+  const nota = $('#cierre-nota').value.trim(), dif = r2(t.contado - resumenTurno(t).esperado);
+  t.notaCierre = Math.abs(dif) >= 0.005 ? nota : '';
   if (propia) olvidarUbicacion();
   if (propia || !t.cierra) { t.cierra = horaAhora(); t.fechaCierre = hoy(); t.salidaTs = Date.now(); }
   save(); encolar('turno', t);
+  // Si no cuadra, el administrador recibe el aviso (se puede cerrar igual)
+  if (Math.abs(dif) >= 0.005 && !esAdmin())
+    crearAviso('caja-diferencia', `Caja de ${t.vendedora} (${t.fecha}, ${t.abre} a ${t.cierra}): ${textoDif(dif)} · debía haber ${money(resumenTurno(t).esperado)}, contó ${money(t.contado)}`, t.notaCierre, dif, { turnoId: t.id });
   const o = resumenTurno(t), forzado = cierreForzado;
   cierreForzado = false;
   $('#dlg-cierre').close();
@@ -1756,6 +1766,8 @@ function mostrarCajaCerrada(t, o, despues){
     <div class="kpis" style="margin-bottom:10px"><div class="kpi main"><small>Quedó en caja (efectivo contado)</small><b class="n">${money(t.contado)}</b></div></div>
     <div class="kv"><span>Debía haber</span><span class="n">${money(o.esperado)}</span></div>
     <div class="cuadre">${textoDif(o.diferencia)}</div>
+    ${t.notaCierre ? `<div class="muted small" style="margin-top:6px">Nota: ${esc(t.notaCierre)}</div>` : ''}
+    ${Math.abs(o.diferencia || 0) >= 0.005 && !esAdmin() ? `<div class="muted small" style="margin-top:6px">El administrador recibió el aviso de la diferencia.</div>` : ''}
     <div class="kv" style="margin-top:10px"><span>Efectivo vendido</span><span class="n">${money(o.efectivo)}</span></div>
     <div class="kv"><span>Transferencias (${nT})</span><span class="n">${money(o.transferencia)}</span></div>
     <div class="kv"><span>Deuna (${nD})</span><span class="n">${money(o.deuna)}</span></div>
@@ -1765,7 +1777,7 @@ function mostrarCajaCerrada(t, o, despues){
     ${totalDiaVendedora(t)}
     <div class="muted small" style="margin-top:10px">El efectivo queda en la caja. Las transferencias y Deuna ya están en la cuenta del banco.</div>`;
   textoCierre = [`CIERRE DE CAJA - FIESTA FELIZ`, `${t.vendedora} · ${t.fecha} · ${t.abre} a ${t.cierra}`, '',
-    `Quedó en caja (contado): ${money(t.contado)}`, `Debía haber: ${money(o.esperado)} · ${textoDif(o.diferencia)}`, '',
+    `Quedó en caja (contado): ${money(t.contado)}`, `Debía haber: ${money(o.esperado)} · ${textoDif(o.diferencia)}`, ...(t.notaCierre ? [`Nota: ${t.notaCierre}`] : []), '',
     `Efectivo: ${money(o.efectivo)}`, `Transferencias (${nT}): ${money(o.transferencia)}`, `Deuna (${nD}): ${money(o.deuna)}`, `Total vendido: ${money(o.total)}`,
     ...(o.fuerteIn || o.fuerteOut ? [`Caja chica para vuelto: sacado ${money(o.fuerteIn)} · devuelto ${money(o.fuerteOut)}`] : []),
     ...(o.chicaIn || o.chicaOut ? [`Préstamos con la caja: entró ${money(o.chicaIn)} · salió ${money(o.chicaOut)}`] : []),
@@ -2449,7 +2461,7 @@ setInterval(subirPendientes, 60000);
 setTimeout(subirPendientes, 4000);
 
 /* ================= Actualizaciones de la app ================= */
-const APP_VERSION = '40'; // la sube sola el script desplegar.sh en cada publicación
+const APP_VERSION = '41'; // la sube sola el script desplegar.sh en cada publicación
 let versionNueva = null;
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 async function revisarVersion(){
@@ -3411,7 +3423,7 @@ function tarjetaTurno(t){
     ${o.prestamoPend ? `<div class="cuadre">Faltan devolver ${money(o.prestamoPend)} a la caja chica</div>` : ''}
     ${listaPorPago(t)}
     ${abierta ? `<button class="btn soft sm block" data-cerrar="${esc(t.id)}" style="margin-top:8px">${ic('lock')}Cerrar esta caja</button>`
-      : `<div class="kv"><span>Efectivo contado</span><span class="n">${money(t.contado)}</span></div><div class="cuadre">${textoDif(o.diferencia)}</div>`}
+      : `<div class="kv"><span>Efectivo contado</span><span class="n">${money(t.contado)}</span></div><div class="cuadre">${textoDif(o.diferencia)}</div>${t.notaCierre ? `<div class="muted small" style="margin-top:4px">Nota de ${esc(t.vendedora.split(' ')[0])}: ${esc(t.notaCierre)}</div>` : ''}`}
     <button class="btn ghost sm block" data-horas="${esc(t.id)}" style="margin-top:6px">${ic('edit')}Corregir horario</button>
   </div>`;
 }
@@ -3822,14 +3834,14 @@ function pintarCampana(){
   const n = esAdmin() ? notifNuevas().length : 0;
   b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
 }
-const TIT_AVISO = { egreso: 'registró un egreso', 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte', 'caja-chica': 'registró un préstamo (caja chica)', 'pago-cambiado': 'cambió la forma de pago de una venta' };
+const TIT_AVISO = { egreso: 'registró un egreso', 'venta-borrada': 'borró una venta', 'caja-fuerte': 'usó la caja fuerte', 'caja-chica': 'registró un préstamo (caja chica)', 'pago-cambiado': 'cambió la forma de pago de una venta', 'caja-diferencia': 'cerró su caja con diferencia' };
 function abrirNotificaciones(){
   const nuevas = new Set(notifNuevas().map(a => a.id));
   const xs = (db.avisos || []).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 200);
   let dia = '';
   $('#notif-b').innerHTML = xs.map(a => {
     const cab = a.fecha !== dia ? `<h3 class="sec">${fechaLarga(dia = a.fecha)}</h3>` : '';
-    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : a.tipo === 'caja-chica' ? 'cash' : a.tipo === 'egreso' ? 'bajada' : a.tipo === 'pago-cambiado' ? 'transfer' : 'boveda')}</span><div>
+    return cab + `<div class="notif${nuevas.has(a.id) ? ' nuevo' : ''}"><span class="al-ic">${ic(a.tipo === 'venta-borrada' ? 'trash' : a.tipo === 'caja-chica' ? 'cash' : a.tipo === 'egreso' ? 'bajada' : a.tipo === 'pago-cambiado' ? 'transfer' : a.tipo === 'caja-diferencia' ? 'alerta' : 'boveda')}</span><div>
       <b>${esc(a.quien)} ${TIT_AVISO[a.tipo] || ''}</b> <small>${a.hora || ''}</small>
       <p>${esc(a.detalle || '')}</p>${a.motivo ? `<p><small>Nota:</small> ${esc(a.motivo)}</p>` : ''}</div></div>`;
   }).join('') || '<div class="empty">No hay notificaciones.</div>';
